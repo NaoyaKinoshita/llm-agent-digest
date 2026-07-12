@@ -1,0 +1,38 @@
+# 新しいレポートが push されたら、ブログ記事の告知を X に自動投稿する
+# 必要な Secrets: X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET
+name: announce
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "daily/**"
+      - "weekly/**"
+      - "monthly/**"
+  workflow_dispatch:
+    inputs:
+      path:
+        description: "手動テスト用: 告知するレポートのパス（例: daily/2026/07/2026-07-12.md）"
+        required: true
+        type: string
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save twitter-api-v2
+      - run: node .github/scripts/announce.mjs
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          MANUAL_PATH: ${{ inputs.path }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
