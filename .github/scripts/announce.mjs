@@ -82,6 +82,22 @@ if (announcements.length === 0) {
   process.exit(0);
 }
 
+// Secrets の登録漏れ・名前違いを実行前に検出する
+const required = [
+  "X_API_KEY",
+  "X_API_SECRET",
+  "X_ACCESS_TOKEN",
+  "X_ACCESS_TOKEN_SECRET",
+];
+const missing = required.filter((name) => !process.env[name]);
+if (missing.length > 0) {
+  console.error(
+    `エラー: Secrets が未設定です → ${missing.join(", ")}\n` +
+      "リポジトリの Settings → Secrets and variables → Actions で登録してください",
+  );
+  process.exit(1);
+}
+
 const client = new TwitterApi({
   appKey: process.env.X_API_KEY,
   appSecret: process.env.X_API_SECRET,
@@ -91,6 +107,23 @@ const client = new TwitterApi({
 
 for (const announcement of announcements) {
   const text = composeText(announcement);
-  const { data } = await client.v2.tweet(text);
-  console.log(`投稿完了: ${announcement.url} (tweet id: ${data.id})`);
+  try {
+    const { data } = await client.v2.tweet(text);
+    console.log(`投稿完了: ${announcement.url} (tweet id: ${data.id})`);
+  } catch (error) {
+    const code = error?.code ?? "?";
+    const detail =
+      error?.data?.detail ?? error?.data?.title ?? error?.message ?? "";
+    console.error(`エラー: X API が ${code} を返しました: ${detail}`);
+    if (code === 401) {
+      console.error(
+        "→ キーの値が誤っている可能性。4つの Secrets の値を再確認してください",
+      );
+    } else if (code === 403) {
+      console.error(
+        "→ App permissions が Read and Write になっているか、その設定後に Access Token を再生成したか、クレジット残高があるかを確認してください",
+      );
+    }
+    process.exit(1);
+  }
 }
