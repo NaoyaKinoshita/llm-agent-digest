@@ -69,9 +69,18 @@ function toAnnouncement(path) {
   };
 }
 
-// レポート冒頭の引用ブロック（「今号について」など）から、20〜30字の
-// ティーザーを抽出する。詳細は記事側で読んでもらう想定で短めに切る
+// レポート生成側が埋め込む X 告知用サマリ（<!-- x-summary: ... -->）を優先し、
+// 無い場合は冒頭の引用ブロックから 20〜30 字のティーザーを自動抽出する
 function extractTeaser(content) {
+  const explicit = /<!--\s*x-summary:\s*([^>]+?)\s*-->/.exec(content);
+  if (explicit) {
+    // 生成側の書きすぎに備えて上限だけかける
+    return truncateTeaser(explicit[1], 20, 40);
+  }
+  return extractTeaserFallback(content);
+}
+
+function extractTeaserFallback(content) {
   for (const line of content.split("\n")) {
     const t = line.trim();
     if (!t.startsWith(">")) {
