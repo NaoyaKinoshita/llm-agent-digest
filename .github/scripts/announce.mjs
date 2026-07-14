@@ -38,15 +38,18 @@ function toAnnouncement(path) {
     return null;
   }
 
+  const content = readFileSync(path, "utf8");
   // レポート冒頭の見出しをタイトルとして使う
-  const firstLine = readFileSync(path, "utf8").split("\n")[0] ?? "";
+  const firstLine = content.split("\n")[0] ?? "";
   const title = firstLine.replace(/^#+\s*/, "").trim() || "最新レポート";
+  const teaser = extractTeaser(content);
 
   if (d) {
     const [year, month, day] = d[1].split("-");
     return {
       label: `${year}/${Number(month)}/${Number(day)}`,
       title,
+      teaser,
       url: `${SITE}/daily/${d[1]}`,
     };
   }
@@ -54,22 +57,72 @@ function toAnnouncement(path) {
     return {
       label: `${w[1]}年${Number(w[2])}月 第${Number(w[3])}週`,
       title,
+      teaser,
       url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}`,
     };
   }
   return {
     label: `${m[1]}年${Number(m[2])}月`,
     title,
+    teaser,
     url: `${SITE}/monthly/${m[1]}-${m[2]}`,
   };
 }
 
-// X の文字数制限（日本語は2単位換算で280単位、URLは一律23単位）に収める
-function composeText({ label, title, url }) {
+// レポート冒頭の引用ブロック（「今号について」など）から、20〜30字の
+// ティーザーを抽出する。詳細は記事側で読んでもらう想定で短めに切る
+function extractTeaser(content) {
+  for (const line of content.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith(">")) {
+      continue;
+    }
+    const plain = t
+      .replace(/^>+\s*/, "")
+      .replace(/^\*\*[^*]+\*\*[:：]?\s*/, "")
+      .replace(/\[\[\d+\]\]\(#[^)]*\)/g, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .trim();
+    if (!plain) {
+      continue;
+    }
+    // 「対象期間（…）は〜」の定型文はスキップし、中身のある文から拾う
+    const sentences = plain
+      .split("。")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const body =
+      sentences.find((s) => !s.startsWith("対象期間")) ?? sentences[0] ?? "";
+    const cleaned = body
+      .replace(/^(一方で|また|さらに|なお|加えて)、?/, "")
+      .replace(/^[:：、。\s]+/, "");
+    if (cleaned) {
+      return truncateTeaser(cleaned);
+    }
+  }
+  return "";
+}
+
+function truncateTeaser(text, min = 20, max = 30) {
+  if (text.length <= max) {
+    return text;
+  }
+  // 20〜30字の間に句読点があればそこで自然に切る
+  for (let i = min; i <= max; i += 1) {
+    if ("、。".includes(text[i])) {
+      return `${text.slice(0, i)}…`;
+    }
+  }
+  return `${text.slice(0, max)}…`;
+}
+
+function composeText({ label, title, teaser, url }) {
   const hashtags = "#LLM #AIエージェント";
   const head = `📰 ${label} | ${title}`;
   const truncated = head.length > 90 ? `${head.slice(0, 89)}…` : head;
-  return `${truncated}\n\n${url}\n${hashtags}`;
+  const summary = teaser ? `${teaser}\n\n` : "";
+  return `${truncated}\n\n${summary}${url}\n${hashtags}`;
 }
 
 const paths = detectNewArticles();
