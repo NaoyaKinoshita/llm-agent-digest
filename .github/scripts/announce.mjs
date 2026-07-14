@@ -61,7 +61,7 @@ function toAnnouncement(path) {
       title,
       teaser:
         explicitSummary ??
-        "今週の主要リリース・研究・セキュリティ動向を1本で振り返り",
+        "今週のLLM・AIエージェント関連の主要リリース・研究動向・セキュリティインシデントを、1本のレポートで振り返ります",
       url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}`,
     };
   }
@@ -69,7 +69,8 @@ function toAnnouncement(path) {
     label: `${m[1]}年${Number(m[2])}月`,
     title,
     teaser:
-      explicitSummary ?? "今月のLLM・AIエージェント動向をまとめて総括",
+      explicitSummary ??
+      "今月のLLM・AIエージェント動向を総括。主要モデルのリリース・研究・セキュリティの動きをまとめて確認できます",
     url: `${SITE}/monthly/${m[1]}-${m[2]}`,
   };
 }
@@ -81,10 +82,10 @@ function extractExplicitSummary(content) {
     return null;
   }
   // 生成側の書きすぎに備えて上限だけかける
-  return truncateTeaser(explicit[1], 20, 40);
+  return truncateTeaser(explicit[1], 50, 90);
 }
 
-// 冒頭の引用ブロック（「今号について」など）から 20〜30 字のティーザーを自動抽出する
+// 冒頭の引用ブロック（「今号について」など）から 50〜80 字のティーザーを自動抽出する
 function extractTeaserFallback(content) {
   for (const line of content.split("\n")) {
     const t = line.trim();
@@ -118,11 +119,11 @@ function extractTeaserFallback(content) {
   return "";
 }
 
-function truncateTeaser(text, min = 20, max = 30) {
+function truncateTeaser(text, min = 50, max = 80) {
   if (text.length <= max) {
     return text;
   }
-  // 20〜30字の間に句読点があればそこで自然に切る
+  // min〜max 字の間に句読点があればそこで自然に切る
   for (let i = min; i <= max; i += 1) {
     if ("、。".includes(text[i])) {
       return `${text.slice(0, i)}…`;
@@ -131,12 +132,32 @@ function truncateTeaser(text, min = 20, max = 30) {
   return `${text.slice(0, max)}…`;
 }
 
+// X の重み付き文字数（CJK・絵文字は2、半角は1。URL は一律23）
+function weightedLength(text) {
+  return [...text].reduce(
+    (n, ch) => n + (ch.codePointAt(0) > 0x10ff ? 2 : 1),
+    0,
+  );
+}
+
+const X_LIMIT = 280;
+const URL_WEIGHT = 23;
+
 function composeText({ label, title, teaser, url }) {
   const hashtags = "#LLM #AIエージェント";
   const head = `📰 ${label} | ${title}`;
   const truncated = head.length > 90 ? `${head.slice(0, 89)}…` : head;
-  const summary = teaser ? `${teaser}\n\n` : "";
-  return `${truncated}\n\n${summary}${url}\n${hashtags}`;
+
+  // サマリ以外の部分の重みを計算し、残り枠に収まるようサマリを切り詰める
+  const fixedWeight =
+    weightedLength(`${truncated}\n\n\n\n${hashtags}\n`) + URL_WEIGHT;
+  let summary = teaser ?? "";
+  while (summary && fixedWeight + weightedLength(summary) > X_LIMIT - 4) {
+    summary = `${summary.slice(0, -2)}…`;
+  }
+
+  const summaryBlock = summary ? `${summary}\n\n` : "";
+  return `${truncated}\n\n${summaryBlock}${url}\n${hashtags}`;
 }
 
 const paths = detectNewArticles();
