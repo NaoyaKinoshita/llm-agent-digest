@@ -42,14 +42,16 @@ function toAnnouncement(path) {
   // レポート冒頭の見出しをタイトルとして使う
   const firstLine = content.split("\n")[0] ?? "";
   const title = firstLine.replace(/^#+\s*/, "").trim() || "最新レポート";
-  const teaser = extractTeaser(content);
+  // weekly / monthly は定型のまとめ文で十分なため固定文を使う
+  // （x-summary が埋め込まれていればそちらを優先）
+  const explicitSummary = extractExplicitSummary(content);
 
   if (d) {
     const [year, month, day] = d[1].split("-");
     return {
       label: `${year}/${Number(month)}/${Number(day)}`,
       title,
-      teaser,
+      teaser: explicitSummary ?? extractTeaserFallback(content),
       url: `${SITE}/daily/${d[1]}`,
     };
   }
@@ -57,29 +59,32 @@ function toAnnouncement(path) {
     return {
       label: `${w[1]}年${Number(w[2])}月 第${Number(w[3])}週`,
       title,
-      teaser,
+      teaser:
+        explicitSummary ??
+        "今週の主要リリース・研究・セキュリティ動向を1本で振り返り",
       url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}`,
     };
   }
   return {
     label: `${m[1]}年${Number(m[2])}月`,
     title,
-    teaser,
+    teaser:
+      explicitSummary ?? "今月のLLM・AIエージェント動向をまとめて総括",
     url: `${SITE}/monthly/${m[1]}-${m[2]}`,
   };
 }
 
-// レポート生成側が埋め込む X 告知用サマリ（<!-- x-summary: ... -->）を優先し、
-// 無い場合は冒頭の引用ブロックから 20〜30 字のティーザーを自動抽出する
-function extractTeaser(content) {
+// レポート生成側が埋め込む X 告知用サマリ（<!-- x-summary: ... -->）を取り出す
+function extractExplicitSummary(content) {
   const explicit = /<!--\s*x-summary:\s*([^>]+?)\s*-->/.exec(content);
-  if (explicit) {
-    // 生成側の書きすぎに備えて上限だけかける
-    return truncateTeaser(explicit[1], 20, 40);
+  if (!explicit) {
+    return null;
   }
-  return extractTeaserFallback(content);
+  // 生成側の書きすぎに備えて上限だけかける
+  return truncateTeaser(explicit[1], 20, 40);
 }
 
+// 冒頭の引用ブロック（「今号について」など）から 20〜30 字のティーザーを自動抽出する
 function extractTeaserFallback(content) {
   for (const line of content.split("\n")) {
     const t = line.trim();
