@@ -4,9 +4,9 @@ import { TwitterApi } from "twitter-api-v2";
 const SITE_BASE_URL = "https://blog.kinolab.work";
 
 // X API 認証情報の確認
-const { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, ADDED_FILES } = process.env;
+const { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET, ADDED_FILES } = process.env;
 
-if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_SECRET) {
+if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_TOKEN_SECRET) {
   console.error("エラー: X API の環境変数が設定されていません。");
   process.exit(1);
 }
@@ -28,7 +28,7 @@ const client = new TwitterApi({
   appKey: X_API_KEY,
   appSecret: X_API_SECRET,
   accessToken: X_ACCESS_TOKEN,
-  accessSecret: X_ACCESS_SECRET,
+  accessSecret: X_ACCESS_TOKEN_SECRET,
 });
 
 const rwClient = client.readWrite;
