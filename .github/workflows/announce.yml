@@ -9,6 +9,7 @@ on:
       - "daily/**"
       - "weekly/**"
       - "monthly/**"
+      - "chiikawa/**"
   workflow_dispatch:
     inputs:
       path:

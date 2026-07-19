@@ -8,6 +8,11 @@ const SITE = "https://blog.kinolab.work";
 const DAILY_RE = /^daily\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.md$/;
 const WEEKLY_RE = /^weekly\/\d{4}\/\d{2}\/(\d{4})-(\d{2})-(\d{2})\.md$/;
 const MONTHLY_RE = /^monthly\/\d{4}\/(\d{4})-(\d{2})\.md$/;
+// 不定期コラム（ちいかわ）。ID の組み立てはブログ側 digest.ts と同期させること
+const COLUMN_RE = /^chiikawa\/(?:.*\/)?(\d{4})-(\d{2})-(\d{2})(?:[-_](.+))?\.md$/;
+
+const DIGEST_HASHTAGS = "#LLM #AIエージェント";
+const COLUMN_HASHTAGS = "#ちいかわ #エンジニアと繋がりたい #llmagentdigest";
 
 // 対象を「このpushで新規追加された md」に限定することで二重投稿を防ぐ。
 // 同一日付の改訂版（_v2 など）は正規表現に一致しないため投稿されない
@@ -34,7 +39,8 @@ function toAnnouncement(path) {
   const d = DAILY_RE.exec(path);
   const w = WEEKLY_RE.exec(path);
   const m = MONTHLY_RE.exec(path);
-  if (!d && !w && !m) {
+  const c = COLUMN_RE.exec(path);
+  if (!d && !w && !m && !c) {
     return null;
   }
 
@@ -45,6 +51,17 @@ function toAnnouncement(path) {
   // weekly / monthly は定型のまとめ文で十分なため固定文を使う
   // （x-summary が埋め込まれていればそちらを優先）
   const explicitSummary = extractExplicitSummary(content);
+
+  if (c) {
+    const id = c[4] ? `${c[1]}-${c[2]}-${c[3]}_${c[4]}` : `${c[1]}-${c[2]}-${c[3]}`;
+    return {
+      header: "【不定期コラム更新】",
+      title,
+      teaser: explicitSummary ?? extractParagraphFallback(content),
+      url: `${SITE}/column/${id}`,
+      hashtags: COLUMN_HASHTAGS,
+    };
+  }
 
   if (d) {
     const [year, month, day] = d[1].split("-");
@@ -119,6 +136,34 @@ function extractTeaserFallback(content) {
   return "";
 }
 
+// コラム記事（引用ブロックを持たない構成）向け: 最初の通常段落をティーザーにする
+function extractParagraphFallback(content) {
+  for (const line of content.split("\n")) {
+    const t = line.trim();
+    if (
+      !t ||
+      t.startsWith("#") ||
+      t.startsWith("---") ||
+      t.startsWith(">") ||
+      t.startsWith("- ") ||
+      t.startsWith("* ") ||
+      t.startsWith("<") ||
+      t.startsWith("|")
+    ) {
+      continue;
+    }
+    const plain = t
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/`([^`]*)`/g, "$1")
+      .trim();
+    if (plain) {
+      return truncateTeaser(plain);
+    }
+  }
+  return "";
+}
+
 function truncateTeaser(text, min = 50, max = 80) {
   if (text.length <= max) {
     return text;
@@ -143,21 +188,22 @@ function weightedLength(text) {
 const X_LIMIT = 280;
 const URL_WEIGHT = 23;
 
-function composeText({ label, title, teaser, url }) {
-  const hashtags = "#LLM #AIエージェント";
-  const head = `📰 ${label} | ${title}`;
+function composeText({ label, header, title, teaser, url, hashtags }) {
+  const tags = hashtags ?? DIGEST_HASHTAGS;
+  // ダイジェストは「📰 日付 | タイトル」、コラムは「【不定期コラム更新】\nタイトル」形式
+  const head = header ? `${header}\n${title}` : `📰 ${label} | ${title}`;
   const truncated = head.length > 90 ? `${head.slice(0, 89)}…` : head;
 
   // サマリ以外の部分の重みを計算し、残り枠に収まるようサマリを切り詰める
   const fixedWeight =
-    weightedLength(`${truncated}\n\n\n\n${hashtags}\n`) + URL_WEIGHT;
+    weightedLength(`${truncated}\n\n\n\n${tags}\n`) + URL_WEIGHT;
   let summary = teaser ?? "";
   while (summary && fixedWeight + weightedLength(summary) > X_LIMIT - 4) {
     summary = `${summary.slice(0, -2)}…`;
   }
 
   const summaryBlock = summary ? `${summary}\n\n` : "";
-  return `${truncated}\n\n${summaryBlock}${url}\n${hashtags}`;
+  return `${truncated}\n\n${summaryBlock}${url}\n${tags}`;
 }
 
 const paths = detectNewArticles();
