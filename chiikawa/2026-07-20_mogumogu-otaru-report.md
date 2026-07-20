@@ -1,6 +1,7 @@
 # 【体験レポート】オープンしたての「ちいかわもぐもぐ本舗 小樽店」に行ってきた！限定グッズ・ステンドグラスの店内・入場予約のコツまとめ
 
 <!-- x-summary: 普段はLLM・AIエージェントを追う当ブログの不定期コラム。北海道・小樽にオープンしたばかりの「ちいかわもぐもぐ本舗 小樽店」へ突撃し、ステンドグラスの店内・限定グッズ・入場予約のリアルを体験レポートにまとめました -->
+<!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/06-usagi.jpg -->
 
 普段このブログは LLM や AI エージェントの話ばかりしていますが、今回は完全に out-of-band な不定期コラムです。運営者、実はかなりのちいかわ好きでして。
 
@@ -31,8 +32,6 @@
 オープンしたてということもあり、店内は大にぎわい。かなりの人だかりで、店内も人がぎゅうぎゅうに密集する大盛況ぶりでした。
 
 > **これから行く方へ：** 確実に入りたいなら、**事前の入場予約はほぼ必須** です。公式LINEアカウントから予約できるので、日程が決まったら早めに予約を「先に確保」しておきましょう。当日券もありますが、SLA は保証されていません。
-
-![オープン祝いの花と、窓の外に並ぶ人々。ちいかわベビーカステラのロゴ看板](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/08-chiikawa-castella.jpg)
 
 ---
 
