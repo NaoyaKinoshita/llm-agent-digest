@@ -21,7 +21,7 @@
 - **場所：** 北海道小樽市堺町6-1（堺町通り沿い）
 - **公式サイト：** [ちいかわもぐもぐ本舗 小樽店｜公式サイト](https://www.chiikawamogumogu.jp/stores/otaru/)
 
-小樽の運河や歴史的建造物が並ぶ観光エリアのど真ん中。お店の外観からしてクラシックで、探偵風の衣装をまとったハチワレ・ちいかわ・うさぎのレリーフがお出迎えしてくれます。この時点でもうかわいい……！
+小樽の運河や歴史的建造物が並ぶ観光エリアのど真ん中。お店の外観からしてクラシックで、ハットやステッキでおめかしした、レトロでハイカラな装いのハチワレ・ちいかわ・うさぎのレリーフがお出迎えしてくれます。この時点でもうかわいい……！
 
 ---
 
@@ -44,9 +44,9 @@
 
 ![天井に組み上げられたステンドグラスの照明。ちいかわたちのモチーフと電球が輝く](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/02-ceiling-lights.jpg)
 
-灯台やソフトクリームなど、小樽らしいモチーフが描かれた横長のステンドグラスも。探偵風のハチワレがめちゃくちゃおしゃれです。
+灯台やソフトクリーム、牛乳パックを持った牛のかぶりもの姿のハチワレなど、北海道らしいモチーフが描かれた横長のステンドグラスも。のどかな牧場の風景みたいで、見ているだけで癒やされます。
 
-![小樽の街並みと灯台をモチーフにした横長ステンドグラスのハチワレ](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/03-ceiling-hachiware.jpg)
+![灯台やソフトクリーム、牛乳パックを持った牛のかぶりもの姿のハチワレが描かれた横長ステンドグラス](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/03-ceiling-hachiware.jpg)
 
 そして各所にあるアーチ型のステンドグラスがフォトスポットになっていて、ちいかわ・ハチワレ・うさぎがそれぞれ主役に。どれも光を透かすとうっとりするほどきれいで、写真を撮る手が止まりませんでした。
 
