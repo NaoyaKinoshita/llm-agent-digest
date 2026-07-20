@@ -12,7 +12,7 @@ const MONTHLY_RE = /^monthly\/\d{4}\/(\d{4})-(\d{2})\.md$/;
 const COLUMN_RE = /^chiikawa\/(?:.*\/)?(\d{4})-(\d{2})-(\d{2})(?:[-_](.+))?\.md$/;
 
 const DIGEST_HASHTAGS = "#LLM #AIエージェント";
-const COLUMN_HASHTAGS = "#ちいかわ #エンジニアと繋がりたい #llmagentdigest";
+const COLUMN_HASHTAGS = "#ちいかわ #エンジニアと繋がりたい";
 
 // 対象を「このpushで新規追加された md」に限定することで二重投稿を防ぐ。
 // 同一日付の改訂版（_v2 など）は正規表現に一致しないため投稿されない
@@ -187,23 +187,40 @@ function weightedLength(text) {
 
 const X_LIMIT = 280;
 const URL_WEIGHT = 23;
+const SAFETY_MARGIN = 6;
+
+// 重み付き上限 maxWeight まで文字列を切り出す（CJK・絵文字は2、半角は1）
+function sliceWeighted(text, maxWeight) {
+  let w = 0;
+  let out = "";
+  for (const ch of text) {
+    const cw = ch.codePointAt(0) > 0x10ff ? 2 : 1;
+    if (w + cw > maxWeight) break;
+    w += cw;
+    out += ch;
+  }
+  return out;
+}
 
 function composeText({ label, header, title, teaser, url, hashtags }) {
   const tags = hashtags ?? DIGEST_HASHTAGS;
-  // ダイジェストは「📰 日付 | タイトル」、コラムは「【不定期コラム更新】\nタイトル」形式
-  const head = header ? `${header}\n${title}` : `📰 ${label} | ${title}`;
-  const truncated = head.length > 90 ? `${head.slice(0, 89)}…` : head;
+  // コラムは長い H1 を載せず header（+x-summary）を本文にする。
+  // daily/weekly/monthly は「📰 日付 | タイトル」形式（タイトルは短い）
+  const head = header ?? `📰 ${label} | ${title}`;
 
-  // サマリ以外の部分の重みを計算し、残り枠に収まるようサマリを切り詰める
+  // 固定部分（head・区切り・URL・ハッシュタグ）の重みを引いた残りを summary に割り当てる。
+  // URL は実長に関わらず X 上は 23 単位で計算される
   const fixedWeight =
-    weightedLength(`${truncated}\n\n\n\n${tags}\n`) + URL_WEIGHT;
+    weightedLength(head) + weightedLength(tags) + URL_WEIGHT + SAFETY_MARGIN;
+  const budget = X_LIMIT - fixedWeight;
+
   let summary = teaser ?? "";
-  while (summary && fixedWeight + weightedLength(summary) > X_LIMIT - 4) {
-    summary = `${summary.slice(0, -2)}…`;
+  if (weightedLength(summary) > budget) {
+    summary = `${sliceWeighted(summary, Math.max(0, budget - 2))}…`;
   }
 
   const summaryBlock = summary ? `${summary}\n\n` : "";
-  return `${truncated}\n\n${summaryBlock}${url}\n${tags}`;
+  return `${head}\n\n${summaryBlock}${url}\n${tags}`;
 }
 
 const paths = detectNewArticles();
