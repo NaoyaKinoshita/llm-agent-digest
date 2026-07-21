@@ -265,6 +265,13 @@ for (const announcement of announcements) {
     const code = error?.code ?? "?";
     const detail =
       error?.data?.detail ?? error?.data?.title ?? error?.message ?? "";
+    // 同一 push で announce が二重起動した場合など、既に投稿済みの内容を再投稿すると
+    // X が重複エラー（403 / duplicate content）を返す。これは実害がないため成功扱いにする
+    const isDuplicate = /duplicate/i.test(`${detail} ${JSON.stringify(error?.data ?? {})}`);
+    if (isDuplicate) {
+      console.log(`スキップ: ${announcement.url} は既に投稿済み（重複）`);
+      continue;
+    }
     console.error(`エラー: X API が ${code} を返しました: ${detail}`);
     if (code === 401) {
       console.error(
