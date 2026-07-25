@@ -3,6 +3,8 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { TwitterApi } from "twitter-api-v2";
 
+// 末尾スラッシュ付きが事前レンダリング済みページの正規 URL。無しだと 301 を挟むため、
+// X がリダイレクト前の内容でカードをキャッシュすることがある
 const SITE = "https://blog.kinolab.work";
 
 const DAILY_RE = /^daily\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.md$/;
@@ -58,7 +60,7 @@ function toAnnouncement(path) {
       header: "【不定期コラム更新】",
       title,
       teaser: explicitSummary ?? extractParagraphFallback(content),
-      url: `${SITE}/column/${id}`,
+      url: `${SITE}/column/${id}/`,
       hashtags: COLUMN_HASHTAGS,
     };
   }
@@ -69,7 +71,7 @@ function toAnnouncement(path) {
       label: `${year}/${Number(month)}/${Number(day)}`,
       title,
       teaser: explicitSummary ?? extractTeaserFallback(content),
-      url: `${SITE}/daily/${d[1]}`,
+      url: `${SITE}/daily/${d[1]}/`,
     };
   }
   if (w) {
@@ -79,7 +81,7 @@ function toAnnouncement(path) {
       teaser:
         explicitSummary ??
         "今週のLLM・AIエージェント関連の主要リリース・研究動向・セキュリティインシデントを、1本のレポートで振り返ります",
-      url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}`,
+      url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}/`,
     };
   }
   return {
@@ -88,7 +90,7 @@ function toAnnouncement(path) {
     teaser:
       explicitSummary ??
       "今月のLLM・AIエージェント動向を総括。主要モデルのリリース・研究・セキュリティの動きをまとめて確認できます",
-    url: `${SITE}/monthly/${m[1]}-${m[2]}`,
+    url: `${SITE}/monthly/${m[1]}-${m[2]}/`,
   };
 }
 
