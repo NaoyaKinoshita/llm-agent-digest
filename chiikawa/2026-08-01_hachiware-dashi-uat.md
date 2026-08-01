@@ -1,6 +1,7 @@
 # 【ちいかわ】ハチワレが豆大福の会に「出汁」を仕込んでしまう回は、IT現場の「UAT炎上」と同じ構造だった
 
 <!-- x-summary: 「出し物」を「出汁」と勘違いして当日会場で気づくハチワレの回は、要求と要件のズレが受け入れテストで発覚して炎上するIT現場の構造そのもの、という解説 -->
+<!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-01_hachiware-dashi-uat/02-mamedaifuku-thumb.jpg -->
 
 こんにちは！今日、我が家に「ハチワレだらけくじ」の戦利品が届きました。
 
