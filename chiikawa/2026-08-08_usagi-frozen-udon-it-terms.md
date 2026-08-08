@@ -1,7 +1,7 @@
 # 【ちいかわ】うさぎの「ほどよく解凍された冷たい巨大うどん」で学ぶIT用語入門
 
 <!-- x-summary: うさぎが巨大な冷凍うどんで動脈を冷やしていた回は、圧縮・ボトルネック・抽象化・キャッシュ・冷却というIT用語がまるごと詰まった入門教材だった、という解説 -->
-<!-- og-image: https://blog.kinolab.work/ogp.png -->
+<!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-08_usagi-frozen-udon/01-usagi-suzushige.png -->
 
 暑い日が続いています。ちいかわの2024年7月7日公開の回に、こんなお話があります。暑さでぐったりしているちいかわとハチワレの前に、うさぎがやたら涼しげな顔で現れる。なんでそんなに涼しいのかと問われたうさぎは、巨大な冷凍うどんを解凍したものを体に当てて、**動脈を冷やしていた**——というオチです。
 
