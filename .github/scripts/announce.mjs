@@ -96,12 +96,17 @@ function toAnnouncement(path) {
 
 // レポート生成側が埋め込む X 告知用サマリ（<!-- x-summary: ... -->）を取り出す
 function extractExplicitSummary(content) {
-  const explicit = /<!--\s*x-summary:\s*([^>]+?)\s*-->/.exec(content);
-  if (!explicit) {
+  // 要約に「>」を書くことがあるので `-->` までを拾う。ただし閉じ忘れたコメントが
+  // 本文を飲み込まないよう、改行と `-->` のどちらも跨がせない（x-summary は必ず1行）。
+  // ブログ側 front/scripts/articleText.mjs と同じ正規表現。片方を直したら両方直すこと
+  const explicit = /<!--\s*x-summary:\s*((?:(?!-->)[^\n])*)\s*-->/.exec(content);
+  // 中身が空のコメントで本文の無い投稿にならないよう、空なら既定文にフォールバックする
+  const summary = explicit?.[1].trim();
+  if (!summary) {
     return null;
   }
   // 生成側の書きすぎに備えて上限だけかける
-  return truncateTeaser(explicit[1], 50, 90);
+  return truncateTeaser(summary, 50, 90);
 }
 
 // 冒頭の引用ブロック（「今号について」など）から 50〜80 字のティーザーを自動抽出する
