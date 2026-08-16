@@ -177,12 +177,12 @@ Google Cloud には **IAM**（アイアム：誰が何をしていいかを決�
 
 > 「おいしいものが食べ放題の島での簡単なお仕事」
 
-![顔にチラシが張り付いた状態で「ワァ!!」と叫ぶうさぎ。手前の丸太の陰から、ちいかわとハチワレが驚いてそれを見ている](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-16_chiikawa-mermaid-island/01-chirashi.png)
+![丸太の陰にいるちいかわとハチワレが「ワァ!!」と驚いている。その視線の先には、顔にチラシが張り付いたうさぎ](https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-16_chiikawa-mermaid-island/01-chirashi.png)
 
 > 出典: ナガノ『ちいかわ』ちいかわ公式X（@ngnchiikawa）投稿
 > <https://x.com/ngnchiikawa/status/1635963443823136770> より引用
 
-うさぎの顔にチラシが張り付いたまま「ワァ！！」となり、それを丸太の陰からちいかわとハチワレが驚いて見ている場面です。**あの紙一枚が、島での活動を可能にした**わけですね。
+うさぎの顔にチラシが張り付いていて、それを見たちいかわとハチワレが丸太の陰で「ワァ！！」と驚いている場面です。**あの紙一枚が、島での活動を可能にした**わけですね。
 
 チラシを持っていれば、島に渡って働いていい。ちいかわ達が島に上陸できたのは、このチラシがあったからです。**「あなたはここで、これをしてよい」と示すもの**──それが権限であり、IAM が管理しているものの正体です。
 
