@@ -105,8 +105,13 @@ function extractExplicitSummary(content) {
   if (!summary) {
     return null;
   }
-  // 生成側の書きすぎに備えて上限だけかける
-  return truncateTeaser(summary, 50, 90);
+  // 座談会形式の告知では発言ごとに改行したいが、x-summary は1行しか書けない。
+  // リテラルの \n を実際の改行に戻すことで、1行のまま複数行の本文を表現する。
+  // ブログ側（front/scripts/articleText.mjs・src/lib/articleMeta.ts）は同じ箇所を
+  // 空白に落としてカード説明文にしている。片方を直したらもう片方も直すこと
+  const withBreaks = summary.replace(/\\n/g, "\n");
+  // 生成側の書きすぎに備えて上限だけかける（改行ぶん従来より緩めている）
+  return truncateTeaser(withBreaks, 50, 140);
 }
 
 // 冒頭の引用ブロック（「今号について」など）から 50〜80 字のティーザーを自動抽出する
