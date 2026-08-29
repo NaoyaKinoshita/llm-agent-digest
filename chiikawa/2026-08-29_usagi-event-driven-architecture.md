@@ -325,12 +325,24 @@ export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/usagi-repo/${SERVICE}"
 
 手元で `docker build` してもいいのですが、今回は **Cloud Build**（クラウドビルド：Google Cloud 側でビルドを実行してくれるサービス）に投げます。
 
+`gcloud builds submit` は、**カレントディレクトリを丸ごと圧縮して Google に送りつけます**。なので**投げる前に、送らなくていいものを外しておきます**。これは `.gcloudignore` に書きます。
+
+```
+# .gcloudignore
+.git/
+.venv/
+__pycache__/
+*.pyc
+```
+
+`.venv/` を外すのが特に大事で、これを書かないと**手元の仮想環境（数百MB）をまるごとアップロードします**。中身は Dockerfile 側で `uv sync` して作り直すので、完全に無駄な往復です。私は最初これで「なんでビルドの開始がこんなに遅いんだ」と首をかしげていました。
+
 ```bash
 # 今のディレクトリを丸ごと送って、Dockerfile でビルドしてもらう
 gcloud builds submit --tag "${IMAGE}:$(git rev-parse --short HEAD)" .
 ```
 
-`gcloud builds submit` は、**カレントディレクトリを圧縮して Google に送り、向こう側でビルドして、Artifact Registry に置くところまで**をやってくれます。Dockerfile があればそれが使われます。
+これで、**送る → 向こう側でビルドする → Artifact Registry に置く**までが一息で終わります。Dockerfile があればそれが使われます。
 
 **そして、ここでたぶん1回転びます。** 私は転びました。
 
@@ -367,18 +379,6 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 この「エラーメッセージの主語が、自分の思っていた登場人物と違う」パターン、クラウドだと本当によくあります。今回も**倉庫（Artifact Registry）の話だと思って倉庫の権限を眺めていた**のですが、実際に怒っていたのは受付（Cloud Storage）でした。**まずエラーが名指ししているリソース名を読む。** 島編のときの「通信できない原因が電話帳にあった」と同じ構図ですね。
 
 これ、地味にうさぎ的な仕組みです。**自分のマシンで殴らない。** ビルドは向こうで勝手に走って、成果物だけが倉庫に置かれる。ノート PC のファンが唸ることもないし、「私の Mac だと通るのに CI だと落ちる」も起きにくくなります（ビルドする場所が1つになるので）。
-
-送るファイルは `.gcloudignore` で絞れます。**ここは書いておいた方がいいです。**
-
-```
-# .gcloudignore
-.git/
-.venv/
-__pycache__/
-*.pyc
-```
-
-`.venv/` を外すのが特に大事で、これを書かないと**手元の仮想環境（数百MB）をまるごとアップロードします**。中身は Dockerfile 側で `uv sync` して作り直すので、完全に無駄な往復です。私は最初これで「なんでビルドの開始がこんなに遅いんだ」と首をかしげていました。
 
 ### タグに `latest` を使わない
 
