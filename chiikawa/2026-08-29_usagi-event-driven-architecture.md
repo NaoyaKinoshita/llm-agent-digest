@@ -152,75 +152,82 @@ export SA_EVENT="sa-eventarc@${PROJECT_ID}.iam.gserviceaccount.com"
 
 ## 5. 作ってみる ― うさぎ本体（Cloud Run）
 
-処理の中身です。Python で書きます。**CloudEvent** という形式（イベントの共通フォーマット）で HTTP POST が飛んでくるので、それを受けるだけです。
+処理の中身です。**FastAPI** で書きます。**CloudEvent** という形式（イベントの共通フォーマット）で HTTP POST が飛んでくるので、それを受けるだけです。
 
 ```python
 # main.py
 import json
 import logging
-import os
-import sys
+from typing import Annotated
 
-from flask import Flask, request
+from fastapi import Body, FastAPI, Header, HTTPException, Response
 from google.cloud import firestore
 
-app = Flask(__name__)
+app = FastAPI()
 db = firestore.Client()
 
-# Cloud Logging に「構造化ログ」として拾わせるための最低限の設定
-def yahaa(message: str, **fields):
+
+def yahaa(message: str, **fields) -> None:
     """ヤハァ!! と叫ぶ（構造化ログ出力）"""
-    print(json.dumps({"severity": "INFO", "message": message, **fields}), file=sys.stdout, flush=True)
+    # Cloud Logging は1行の JSON をそのままログの構造として拾ってくれる
+    print(json.dumps({"severity": "INFO", "message": message, **fields}), flush=True)
 
 
-@app.route("/", methods=["POST"])
-def handle():
-    # 1. イベントの一意な ID を取り出す（重複判定のカギ）
-    event_id = request.headers.get("ce-id")
-    bucket = request.headers.get("ce-subject", "")
-
-    if not event_id:
+@app.post("/", status_code=204)
+def handle(
+    payload: Annotated[dict, Body(default_factory=dict)],
+    ce_id: Annotated[str | None, Header()] = None,      # ヘッダ ce-id が入る
+    ce_subject: Annotated[str, Header()] = "",          # ヘッダ ce-subject が入る
+) -> Response:
+    # 1. イベントの一意な ID を確認する（重複判定のカギ）
+    if not ce_id:
         # ID がないものは再送されても判定できないので受け取らない
-        return ("no ce-id", 400)
+        raise HTTPException(status_code=400, detail="no ce-id")
 
     # 2. 冪等性チェック：すでにしばいた敵かどうか
-    doc_ref = db.collection("processed_events").document(event_id)
+    doc_ref = db.collection("processed_events").document(ce_id)
     try:
         doc_ref.create({"at": firestore.SERVER_TIMESTAMP})
     except Exception:
         # すでに存在する = 2回目の配信。何もせず成功を返す
-        yahaa("フゥン（処理済みなので何もしない）", event_id=event_id)
-        return ("duplicate", 204)
+        yahaa("フゥン（処理済みなので何もしない）", event_id=ce_id)
+        return Response(status_code=204)
 
     # 3. ここからが本来の仕事（草むしり）
-    yahaa("ヤハァ!!", event_id=event_id, subject=bucket)
+    yahaa("ヤハァ!!", event_id=ce_id, subject=ce_subject)
     try:
-        do_kusamushiri(request.get_json(silent=True) or {})
+        do_kusamushiri(payload)
     except Exception as e:
         # 失敗したら記録を消す（次の再配信でやり直せるように）
         doc_ref.delete()
         logging.exception("討伐失敗")
-        return (f"error: {e}", 500)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
-    yahaa("ウラ!!（完了）", event_id=event_id)
-    return ("ok", 204)
+    yahaa("ウラ!!（完了）", event_id=ce_id)
+    return Response(status_code=204)
 
 
-def do_kusamushiri(payload: dict):
+def do_kusamushiri(payload: dict) -> None:
     # ここに実処理。今回はログだけ
     yahaa("草をむしっています", size=payload.get("size"))
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 ```
+
+FastAPI ならではのポイントを2つだけ。
+
+**① ヘッダ名は勝手に変換される。** 引数に `ce_id` と書くと、FastAPI が自動でアンダースコアをハイフンに直して `ce-id` ヘッダを探しに行ってくれます。CloudEvent はヘッダに情報を詰めてくる仕様なので、この変換のおかげで**受け取り口がそのまま仕様書**みたいになります。「このエンドポイントは ce-id と ce-subject を見ている」が引数を見るだけでわかる。
+
+**② あえて `async def` にしていません。** ここ、意外と大事です。
+
+FastAPI は `async def` で書くと1つのスレッドで大量のリクエストを捌けます。ただし**その中で「待つ処理」を同期的に書くと、全体が止まります**。今回使っている Firestore のクライアントは同期ライブラリなので、`async def` の中で呼ぶと、待っている間そのインスタンス全体がフリーズします。……ちいかわ状態ですね。
+
+普通の `def` で書くと、FastAPI が**自動でスレッドプールに逃がしてくれます**。同期ライブラリを使うなら `def`、`await` できる非同期ライブラリで揃えられるなら `async def`。**中途半端に混ぜたときだけ事故る**、と覚えておくと安全です。
 
 `requirements.txt` と `Dockerfile` も置いておきます。
 
 ```
 # requirements.txt
-flask==3.1.0
-gunicorn==23.0.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
 google-cloud-firestore==2.20.0
 ```
 
@@ -231,7 +238,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
-CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "main:app"]
+# Cloud Run は PORT 環境変数で待ち受けポートを指定してくる
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
 ```
 
 デプロイします。
