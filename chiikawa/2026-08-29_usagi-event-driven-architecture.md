@@ -338,9 +338,24 @@ __pycache__/
 `.venv/` を外すのが特に大事で、これを書かないと**手元の仮想環境（数百MB）をまるごとアップロードします**。中身は Dockerfile 側で `uv sync` して作り直すので、完全に無駄な往復です。私は最初これで「なんでビルドの開始がこんなに遅いんだ」と首をかしげていました。
 
 ```bash
+# 焼くうさぎに名札をつける（git 管理下でなければ日時を使う）
+export TAG="$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d-%H%M%S)"
+
 # 今のディレクトリを丸ごと送って、Dockerfile でビルドしてもらう
-gcloud builds submit --tag "${IMAGE}:$(git rev-parse --short HEAD)" .
+gcloud builds submit --tag "${IMAGE}:${TAG}" .
 ```
+
+`2>/dev/null || date ...` を付けているのには理由があります。**素で `$(git rev-parse --short HEAD)` と書くと、git リポジトリでないディレクトリや、まだ1コミットもしていないディレクトリでは空文字になります。** そしてこうなります。
+
+```
+ERROR: (gcloud.builds.submit) INVALID_ARGUMENT: invalid build:
+invalid image name ".../usagi-repo/usagi:": could not parse reference:
+asia-northeast1-docker.pkg.dev/my-usagi-project/usagi-repo/usagi:
+```
+
+末尾がコロンで終わっているのが手がかりです。**タグが空のまま組み立てられて、名前として成立していない**。エラーは `gcloud` から返ってきますが、原因は**シェルの側で起きた失敗**なので、`gcloud` のドキュメントをいくら読んでも書いてありません。
+
+コマンド置換（`$(...)`）は、**中で失敗しても空文字を置いて先に進みます**。黙って進むのが一番こわいパターンですね。
 
 これで、**送る → 向こう側でビルドする → Artifact Registry に置く**までが一息で終わります。Dockerfile があればそれが使われます。
 
@@ -382,7 +397,7 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 
 ### タグに `latest` を使わない
 
-`$(git rev-parse --short HEAD)` を使っているのは意図的です。**イメージのタグをコミットハッシュにしておくと、「今動いているうさぎが、どのソースから焼かれたのか」が一意に決まります**。
+タグにコミットハッシュを使っているのは意図的です。**イメージのタグをコミットハッシュにしておくと、「今動いているうさぎが、どのソースから焼かれたのか」が一意に決まります**。
 
 `latest` は便利ですが、**同じ名前で中身が入れ替わる**ので、障害が起きたときに「そのとき動いていた `latest`」を後から取り出せません。せっかく `uv.lock` で依存を固定したのに、イメージの側が動く名前だと、再現性がそこで切れます。
 
@@ -391,8 +406,6 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 焼き上がったイメージを指定して、Cloud Run に載せます。
 
 ```bash
-export TAG="$(git rev-parse --short HEAD)"
-
 gcloud run deploy "${SERVICE}" \
   --image="${IMAGE}:${TAG}" \
   --region="${REGION}" \
