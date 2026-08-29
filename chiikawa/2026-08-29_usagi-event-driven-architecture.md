@@ -222,25 +222,70 @@ FastAPI は `async def` で書くと1つのスレッドで大量のリクエス�
 
 普通の `def` で書くと、FastAPI が**自動でスレッドプールに逃がしてくれます**。同期ライブラリを使うなら `def`、`await` できる非同期ライブラリで揃えられるなら `async def`。**中途半端に混ぜたときだけ事故る**、と覚えておくと安全です。
 
-`requirements.txt` と `Dockerfile` も置いておきます。
+ライブラリの管理には **uv**（アストラル社製の、爆速な Python パッケージマネージャ）を使います。ここもうさぎ的な話でして、**とにかく速い**。`pip` で数十秒かかっていたインストールが、体感で一瞬になります。
 
+```bash
+# プロジェクトを初期化して、必要なものを足していく
+uv init --name usagi --python 3.12
+uv add fastapi "uvicorn[standard]" google-cloud-firestore
 ```
-# requirements.txt
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-google-cloud-firestore==2.20.0
+
+これだけで `pyproject.toml`（何が必要かを書いた宣言）と `uv.lock`（実際に入れた版を1つ残らず固定した記録）ができます。
+
+```toml
+# pyproject.toml
+[project]
+name = "usagi"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "google-cloud-firestore>=2.20.0",
+]
 ```
+
+ローカルで動かすときはこうです。仮想環境を自分で作って有効化する儀式が要りません。
+
+```bash
+uv run uvicorn main:app --reload --port 8080
+```
+
+**`requirements.txt` と何が違うのか。** ここが一番大事なところで、**`uv.lock` があると、どの環境でもまったく同じ版が入ります**。
+
+`requirements.txt` に `fastapi>=0.115.6` とだけ書いてあると、私の手元と Cloud Run の上で違う版が入り得ます。しかもそれは**新しくデプロイした日に突然起きる**。「手元では動くのに本番だけ落ちる」の、けっこうな割合がこれです。
+
+ロックファイルは、**うさぎを毎回まったく同じ個体として召喚するための呪文**だと思ってください。今日のうさぎと来週のうさぎが別人だと、討伐結果の再現性がなくなります。
+
+Dockerfile もこれに合わせます。
 
 ```dockerfile
 # Dockerfile
 FROM python:3.12-slim
+
+# uv 本体を公式イメージから持ってくる（pip install するより速い）
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
+
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# 先に依存だけ入れる。コードを変えてもこの層はキャッシュが効く
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
 COPY main.py .
+
+# uv が作った仮想環境の中の python を使う
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Cloud Run は PORT 環境変数で待ち受けポートを指定してくる
 CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
 ```
+
+ここも2つだけ補足します。
+
+**① `--frozen` が今日の主役です。** これは「`uv.lock` に書いてある通りに入れろ、勝手に解決し直すな」という指定です。ロックファイルと `pyproject.toml` がずれていたら、**黙って直さずにビルドを失敗させます**。これは意地悪ではなくて、**気づかないまま別のものが入るより、その場で止まった方が100倍マシ**だからです。ファイアウォールの「開け忘れは動かないのですぐ気づく」と同じ発想ですね。
+
+**② 依存とコードを別の層に分けています。** `COPY main.py` を後ろに置いているので、コードだけ直したときは依存のインストールが丸ごとスキップされます。コールドスタートの話をしておいて**ビルドが遅い**のは格好がつかないので、ここは効かせておきたいところです。
 
 デプロイします。
 
@@ -255,6 +300,8 @@ gcloud run deploy "${SERVICE}" \
   --concurrency=10 \
   --timeout=300
 ```
+
+`--source=.` は「このディレクトリを丸ごと渡すので、そっちでビルドして」という指定です。**Dockerfile があればそれが使われます**（無ければ Google 側が中身を見て勝手にビルドしてくれる Buildpacks という仕組みが動きます）。今回は uv で固めたいので Dockerfile を置いてあります。
 
 オプションが今日の主役なので、1つずつ見ます。
 
