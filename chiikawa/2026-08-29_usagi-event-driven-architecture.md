@@ -436,6 +436,46 @@ gcloud run deploy "${SERVICE}" \
 
 `--min-instances=0` が**ゼロスケール**です。ここを 1 にすると常時起動になり、応答は速くなりますが**待っているだけで課金されます**。「速さを買うか、コストを削るか」の設定がこの1行に入っています。
 
+### ⚠️ `--allow-unauthenticated` にしないでください
+
+上のコマンドで一番強く言いたいのが `--no-allow-unauthenticated` です。**認証なしでは呼べない**という指定で、これを反対の `--allow-unauthenticated` にすると、**URL を知っている人なら世界中の誰でもこのエンドポイントを叩けます**。
+
+今回のうさぎは、**呼ばれたら何も疑わずに仕事をする**設計です。ステートレスで、前後の文脈を持たず、渡されたペイロードだけを見て動く。それが長所なのですが、裏を返すと**誰が呼んだかを自分では判断しません**。だから「呼んでいい相手かどうか」は、うさぎの手前で決めておく必要があります。
+
+公開してしまうと、こういうことが起きます。
+
+- 偽のイベントを投げ込まれて、**ありもしない草をむしらされる**
+- 大量に叩かれて、**うさぎが100体湧いて課金が伸びる**（ゼロスケールは、ゼロから青天井への近道でもあります）
+- `ce-id` を使い回されて、**冪等性の記録が汚染される**
+
+動作確認のときに一度 `--allow-unauthenticated` にして、そのまま忘れる——これが一番ありがちです。**確認するなら認証したまま、ID トークンを付けて叩けます。**
+
+```bash
+# 自分の資格情報でトークンを取って、認証付きで叩く
+export URL="$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')"
+
+curl -X POST "${URL}" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "ce-id: test-001" \
+  -H "Content-Type: application/json" \
+  -d '{"size": 1}'
+```
+
+今どうなっているかは、これで確認できます。
+
+```bash
+gcloud run services get-iam-policy "${SERVICE}" --region="${REGION}"
+```
+
+ここに `allUsers` が出てきたら**公開されています**。外すならこうです。
+
+```bash
+gcloud run services remove-iam-policy-binding "${SERVICE}" \
+  --region="${REGION}" --member="allUsers" --role="roles/run.invoker"
+```
+
+呼べるのは、さきほど `run.invoker` を渡した**配達役のサービスアカウントだけ**。この状態が正解です。島編の記事で「まず全部閉じて、必要な穴だけ開ける」と書きましたが、Cloud Run でその穴にあたるのがここです。
+
 **`--source=.` を使えば1コマンドで済むのでは？** と思った方、正しいです。`gcloud run deploy --source=.` は、上のビルドとデプロイをまとめてやってくれます。最初の1回はそれで十分です。
 
 ただ、**ビルドとデプロイを分けておくと後で効きます**。同じイメージを検証環境と本番に順番に流したいとき、`--source` 方式だと**環境ごとにビルドし直すことになり、「検証で確認したものと本番のものが同一である」保証がなくなります**。1回焼いたうさぎを、そのまま次の現場に送り込みたい。
