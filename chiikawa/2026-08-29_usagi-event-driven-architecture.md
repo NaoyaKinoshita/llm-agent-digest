@@ -1,0 +1,446 @@
+# 【ちいかわ】「ヤハァ!!」と現れて即スケール ― うさぎに学ぶ Google Cloud イベント駆動アーキテクチャ
+
+<!-- x-summary: どこからともなく現れて、草をむしって、フゥンと去っていくうさぎ。あの生態はイベント駆動アーキテクチャそのものだった、という話。Pub/Sub と Eventarc と Cloud Run で「うさぎ」を実際に組み立てる gcloud 手順つきです -->
+
+こんにちは！
+
+私は普段 Python でアプリケーション（Web の API など）を書いているエンジニアです。この前は島編を借りて Google Cloud の VPC の話を書きましたが、今日はもう少し明るい話をします。**アーキテクチャ設計**の話です。
+
+システムを設計していると、「理想の部品」というものを考えます。障害に強くて、負荷が急に増えても動じなくて、頼まれた仕事を単独で終わらせて、後始末までして去っていく部品。
+
+……そんな都合のいいものが本当にあるのか、と思うじゃないですか。
+
+**あるんですよ。うさぎです。**
+
+というわけで今日は、うさぎの生態をお借りして、**Google Cloud でイベント駆動アーキテクチャを組む**話をします。後半は実際に手を動かせるように、`gcloud` のコマンドをそのまま並べました。動くところまで持っていきます。
+
+---
+
+## 1. まず、うさぎとは何だったのか
+
+うさぎの行動を、いったん冷静に観察してみます。
+
+- どこから来たのか誰も知らない。**気づくと現れている**
+- 「ヤハァ!!」と叫ぶ。とにかく叫ぶ
+- 草むしりでも討伐でも、**単独で、圧倒的な速さで片付ける**（草むしり検定3級）
+- 終わると「フゥン」と言って**どこかへ消える**
+- 前回何があったかを、たぶん**まったく引きずっていない**
+
+これ、クラウドのコンポーネントの理想像を箇条書きにしただけみたいな内容なんですよね。
+
+対比のために、ちいかわ本人にも登場してもらいます。ちいかわはとても良い子ですが、システムの部品としてはかなり手強い性質を持っています。
+
+| | ちいかわ型 | うさぎ型 |
+| :--- | :--- | :--- |
+| **状態** | 不安・文脈・過去の出来事を内部に抱える（**ステートフル**） | 何も抱えていない（**ステートレス**） |
+| **依存** | ハチワレの助けが前提（**密結合**） | 単独で完結（**疎結合**） |
+| **異常時** | 固まる・泣く（**ブロッキング**） | 関係なく殴る |
+| **待機中** | ずっとそこにいる（**常時起動**） | いない（**ゼロスケール**） |
+
+ここで大事なのは、**ちいかわが悪いわけではない**ということです。状態を持つ部品は必ず必要で、データベースなんてまさにそれです。問題は、**状態を持つ部品と、持たなくていい部品を分けずに全部くっつけてしまうこと**。
+
+くっつけると何が起きるか。**どこか1箇所が泣き崩れると、全体が連鎖して止まります。**
+
+だから設計の目標はこうなります。
+
+> **システムの中に、どれだけ「うさぎ」を置けるか。**
+
+---
+
+## 2. うさぎを Google Cloud に実装する
+
+うさぎの振る舞いを、そのままマネージドサービスに割り当てていきます。
+
+| うさぎの振る舞い | Google Cloud | 何がうれしいか |
+| :--- | :--- | :--- |
+| 神出鬼没に現れる | **Eventarc / Cloud Pub/Sub** | 呼ぶ側と呼ばれる側が互いを知らなくていい |
+| 一瞬で立ち上がる | **Cloud Run** | 暇なときは0インスタンス。来たら一気に並ぶ |
+| 単独で片付ける | **ステートレスなコンテナ** | 渡されたペイロードだけで完結する |
+| 「ヤハァ」と叫ぶ | **Cloud Logging（構造化ログ）** | 中で何が起きているか外から見える |
+| 討伐しそこねた敵 | **デッドレタートピック** | 失敗を握り潰さず、別の場所に積む |
+
+今回作るものの全体像です。**Cloud Storage にファイルが置かれたら、うさぎが現れて処理して、消える**。それだけの構成にします。
+
+```mermaid
+flowchart LR
+    A["Cloud Storage<br/>(草が生える場所)"] -->|"オブジェクト作成イベント"| B["Eventarc<br/>(気配を察知)"]
+    B -->|"CloudEvent を配信"| C["Cloud Run<br/>(うさぎ / ゼロスケール)"]
+    C -->|"処理済みIDを記録"| D["Firestore<br/>(2度しばかないための記録)"]
+    C -->|"ヤハァ!! / 構造化ログ"| E["Cloud Logging"]
+    C -.->|"5回失敗したら"| F["デッドレタートピック<br/>(討伐失敗の山)"]
+```
+
+点線が大事なところです。**失敗したうさぎの分も、ちゃんと行き先を用意しておきます。**
+
+---
+
+## 3. 3つの設計原則
+
+コマンドに入る前に、この構成が守ろうとしていることを3つだけ。
+
+### ① 呼び出し元をブロックしない
+
+ちいかわが困って固まっていても、うさぎは勝手に動いて敵を倒します。**あの独立性が価値**です。
+
+よくないパターンは、サービス A が サービス B を HTTP で同期呼び出しして、B が C を呼んで……と数珠つなぎにすること。C が遅いと、A の画面まで遅くなります。C が落ちると、A も落ちます。**一番弱いところの弱さが、全員に伝染する**。
+
+間に **Pub/Sub** を挟むと、A は「置いた」で終われます（Fire-and-Forget）。B が今日たまたま調子が悪くても、メッセージはキューに残るだけで、A は何事もなく応答を返します。
+
+### ② ゼロスケールと水平スケール
+
+うさぎは待機していません。**必要な瞬間だけ現れます。**
+
+**Cloud Run** は最小インスタンス数を 0 にできるので、誰も来ない夜間のコストはほぼゼロです。そして、でかつよが10体まとめて出てきたら、コンテナが10個並列で立ち上がります。**縦に強くする（マシンを大きくする）のではなく、横に増やす**のが水平スケールです。
+
+うさぎが強いのは、1体が強いからでもありますが、**何体でも湧けるから**でもあると思うんですよね。
+
+### ③ 冪等性（べきとうせい）
+
+これが今日いちばん覚えて帰ってほしい言葉です。
+
+**冪等性**（Idempotency）とは、**同じ処理を何回やっても結果が変わらない**性質のことです。
+
+Pub/Sub のような分散メッセージングは、**At-least-once delivery（少なくとも1回は届ける）** が基本です。「ちょうど1回」ではありません。ネットワークが不安定だったり、返事が遅れたりすると、**同じメッセージが2回届くことがあります**。
+
+うさぎは勢い余って同じ敵を2回しばいても特に問題ありません。でもシステムだと、「2回目の請求」「2通目のメール」「二重登録」が発生します。これは破綻です。
+
+なので、**2回来ても平気なように作っておく**。具体的には後で書きます。
+
+---
+
+## 4. 作ってみる ― 準備
+
+ここから実際に組みます。プロジェクトと変数を用意しておきます。
+
+```bash
+export PROJECT_ID="my-usagi-project"
+export REGION="asia-northeast1"
+export BUCKET="gs://${PROJECT_ID}-kusa"     # 草の生える場所
+export SERVICE="usagi"                       # うさぎ本体
+
+gcloud config set project "${PROJECT_ID}"
+
+# 必要な API をまとめて有効化
+gcloud services enable \
+  run.googleapis.com \
+  eventarc.googleapis.com \
+  pubsub.googleapis.com \
+  storage.googleapis.com \
+  firestore.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com
+```
+
+次に**サービスアカウント**（人間ではなく、プログラムが使うアカウント）を2つ作ります。片方はうさぎ自身、もう片方はうさぎを呼び出す側です。
+
+```bash
+# うさぎ本体が名乗るアカウント
+gcloud iam service-accounts create sa-usagi \
+  --display-name="Usagi worker"
+
+# イベントを配達する側のアカウント
+gcloud iam service-accounts create sa-eventarc \
+  --display-name="Eventarc invoker"
+
+export SA_USAGI="sa-usagi@${PROJECT_ID}.iam.gserviceaccount.com"
+export SA_EVENT="sa-eventarc@${PROJECT_ID}.iam.gserviceaccount.com"
+```
+
+**なぜ2つに分けるのか。** 「呼ぶ権限」と「処理する権限」は別物だからです。デフォルトのアカウントを使い回すと、うさぎが必要以上に強くなります。強すぎるうさぎは、間違えたときの被害も大きい。
+
+---
+
+## 5. 作ってみる ― うさぎ本体（Cloud Run）
+
+処理の中身です。Python で書きます。**CloudEvent** という形式（イベントの共通フォーマット）で HTTP POST が飛んでくるので、それを受けるだけです。
+
+```python
+# main.py
+import json
+import logging
+import os
+import sys
+
+from flask import Flask, request
+from google.cloud import firestore
+
+app = Flask(__name__)
+db = firestore.Client()
+
+# Cloud Logging に「構造化ログ」として拾わせるための最低限の設定
+def yahaa(message: str, **fields):
+    """ヤハァ!! と叫ぶ（構造化ログ出力）"""
+    print(json.dumps({"severity": "INFO", "message": message, **fields}), file=sys.stdout, flush=True)
+
+
+@app.route("/", methods=["POST"])
+def handle():
+    # 1. イベントの一意な ID を取り出す（重複判定のカギ）
+    event_id = request.headers.get("ce-id")
+    bucket = request.headers.get("ce-subject", "")
+
+    if not event_id:
+        # ID がないものは再送されても判定できないので受け取らない
+        return ("no ce-id", 400)
+
+    # 2. 冪等性チェック：すでにしばいた敵かどうか
+    doc_ref = db.collection("processed_events").document(event_id)
+    try:
+        doc_ref.create({"at": firestore.SERVER_TIMESTAMP})
+    except Exception:
+        # すでに存在する = 2回目の配信。何もせず成功を返す
+        yahaa("フゥン（処理済みなので何もしない）", event_id=event_id)
+        return ("duplicate", 204)
+
+    # 3. ここからが本来の仕事（草むしり）
+    yahaa("ヤハァ!!", event_id=event_id, subject=bucket)
+    try:
+        do_kusamushiri(request.get_json(silent=True) or {})
+    except Exception as e:
+        # 失敗したら記録を消す（次の再配信でやり直せるように）
+        doc_ref.delete()
+        logging.exception("討伐失敗")
+        return (f"error: {e}", 500)
+
+    yahaa("ウラ!!（完了）", event_id=event_id)
+    return ("ok", 204)
+
+
+def do_kusamushiri(payload: dict):
+    # ここに実処理。今回はログだけ
+    yahaa("草をむしっています", size=payload.get("size"))
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+```
+
+`requirements.txt` と `Dockerfile` も置いておきます。
+
+```
+# requirements.txt
+flask==3.1.0
+gunicorn==23.0.0
+google-cloud-firestore==2.20.0
+```
+
+```dockerfile
+# Dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY main.py .
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "main:app"]
+```
+
+デプロイします。
+
+```bash
+gcloud run deploy "${SERVICE}" \
+  --source=. \
+  --region="${REGION}" \
+  --service-account="${SA_USAGI}" \
+  --no-allow-unauthenticated \
+  --min-instances=0 \
+  --max-instances=100 \
+  --concurrency=10 \
+  --timeout=300
+```
+
+オプションが今日の主役なので、1つずつ見ます。
+
+| オプション | 意味 | うさぎで言うと |
+| :--- | :--- | :--- |
+| `--min-instances=0` | 暇なときは1個も起動しない | 普段どこにいるか不明 |
+| `--max-instances=100` | 最大100個まで同時に湧く | でかつよ100体でも並ぶ |
+| `--concurrency=10` | 1個が同時に10件まで受け持つ | 1体が10株まとめてむしる |
+| `--no-allow-unauthenticated` | 認証なしでは呼べない | 誰でも召喚できるとまずい |
+| `--timeout=300` | 5分で打ち切る | 長引く討伐は諦める |
+
+`--min-instances=0` が**ゼロスケール**です。ここを 1 にすると常時起動になり、応答は速くなりますが**待っているだけで課金されます**。「速さを買うか、コストを削るか」の設定がこの1行に入っています。
+
+うさぎ側にも権限を渡しておきます。
+
+```bash
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${SA_USAGI}" \
+  --role="roles/datastore.user"
+```
+
+---
+
+## 6. 作ってみる ― 呼び出し口（Eventarc）
+
+いよいよ「神出鬼没」の部分です。バケット（草の生える場所）を作り、そこにファイルが置かれたらうさぎが湧くようにします。
+
+```bash
+gcloud storage buckets create "${BUCKET}" --location="${REGION}"
+```
+
+ここで**先に権限を通しておかないと必ず失敗します**。私はここで2回転びました。
+
+```bash
+# ① Cloud Storage のサービスエージェントが Pub/Sub に発行できるようにする
+export GCS_SA="$(gcloud storage service-agent --project=${PROJECT_ID})"
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GCS_SA}" \
+  --role="roles/pubsub.publisher"
+
+# ② 配達役が Cloud Run を呼べるようにする
+gcloud run services add-iam-policy-binding "${SERVICE}" \
+  --region="${REGION}" \
+  --member="serviceAccount:${SA_EVENT}" \
+  --role="roles/run.invoker"
+
+# ③ 配達役が Eventarc のイベントを受け取れるようにする
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${SA_EVENT}" \
+  --role="roles/eventarc.eventReceiver"
+```
+
+そしてトリガーを作ります。
+
+```bash
+gcloud eventarc triggers create usagi-trigger \
+  --location="${REGION}" \
+  --destination-run-service="${SERVICE}" \
+  --destination-run-region="${REGION}" \
+  --event-filters="type=google.cloud.storage.object.v1.finalized" \
+  --event-filters="bucket=${PROJECT_ID}-kusa" \
+  --service-account="${SA_EVENT}"
+```
+
+これで完成です。**バケットにファイルを置くと、うさぎが湧きます。**
+
+```bash
+echo "kusa" > kusa.txt
+gcloud storage cp kusa.txt "${BUCKET}/"
+```
+
+叫び声を確認します。
+
+```bash
+gcloud run services logs read "${SERVICE}" --region="${REGION}" --limit=20
+```
+
+`ヤハァ!!` が出ていれば成功です。出ていなければ、だいたい上の①〜③のどれかが抜けています（経験談）。
+
+---
+
+## 7. 討伐に失敗したうさぎをどうするか
+
+ここまでで動くものはできましたが、**設計としてはまだ半分**です。
+
+処理が失敗したらどうなるか。Pub/Sub は再配信します。それはいいのですが、**壊れたメッセージ（そもそも処理不能なデータ）だと、永遠に再配信され続けます**。これを毒メッセージ（poison message）と呼びます。1件のゴミが、うさぎを無限に召喚し続ける状態です。
+
+なので「**何回か試してダメなら、別の場所に置く**」を設定します。それが**デッドレタートピック**（DLQ）です。
+
+```bash
+# 討伐失敗の山を作る
+gcloud pubsub topics create usagi-dead-letter
+
+# Eventarc が内部で作ったサブスクリプションの名前を調べる
+gcloud eventarc triggers describe usagi-trigger \
+  --location="${REGION}" --format="value(transport.pubsub.subscription)"
+```
+
+出てきたサブスクリプション名を使って、再試行の作法を設定します。
+
+```bash
+export SUB="projects/${PROJECT_ID}/subscriptions/xxxxxxxx"  # 上で調べた名前
+
+gcloud pubsub subscriptions update "${SUB}" \
+  --dead-letter-topic="usagi-dead-letter" \
+  --max-delivery-attempts=5 \
+  --min-retry-delay=10s \
+  --max-retry-delay=600s
+```
+
+| 設定 | 意味 |
+| :--- | :--- |
+| `--max-delivery-attempts=5` | 5回やってダメなら諦めて DLQ に送る |
+| `--min-retry-delay` / `--max-retry-delay` | 再試行の間隔を徐々に広げる（**指数バックオフ**） |
+
+**指数バックオフ**は「失敗したら、少し待ってから、次はもっと待ってから試す」という作法です。相手が倒れているときに全力で連打し続けると、復旧しようとしている相手にトドメを刺すことになります。これは**サンダーリングハード問題**（雷鳴のような群れ）と呼ばれる、実際によく起きる事故です。
+
+そして DLQ を配送する側にも権限が要ります。ここも忘れがちです。
+
+```bash
+export PROJECT_NUMBER="$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')"
+export PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding usagi-dead-letter \
+  --member="serviceAccount:${PUBSUB_SA}" --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding "${SUB}" \
+  --member="serviceAccount:${PUBSUB_SA}" --role="roles/pubsub.subscriber"
+```
+
+DLQ を作ったら、**必ず中身を見る運用もセットで作ってください**。積むだけ積んで誰も見ない DLQ は、ただのゴミ箱です。私は監視アラートを1本入れて、メッセージ数が0より大きくなったら通知するようにしています。
+
+---
+
+## 8. ハマったところ
+
+実際にやってみて転んだところを、正直に書いておきます。
+
+**① イベントが2回来る**
+
+これは仕様です。バグではありません。At-least-once とはそういう意味です。冪等性を入れていないと、テスト中に「なんか2回処理されてる……」と首をかしげることになります。上のコードで `ce-id` を Firestore に記録しているのはこのためです。
+
+**② 冪等性の記録を、処理の後に書いてしまう**
+
+最初、私は「処理が成功してから記録を書く」順番にしていました。これだと、**処理が終わって記録を書く直前に落ちたとき**に、二重実行されます。なので**先に記録を取って（`create` で予約して）、失敗したら消す**という順番にしています。
+
+`create` を使っているのもポイントで、これは**すでに存在すると失敗する**書き込みです。「先に旗を立てた方が勝ち」という判定を、データベース側の原子性に任せています。自分で「存在チェック → 書き込み」と2手に分けると、その隙間で追い抜かれます。
+
+**③ ゼロスケールの起動が遅い**
+
+0インスタンスから立ち上がるとき、当然ながら待ち時間が発生します（**コールドスタート**）。今回のような非同期処理なら誰も困りませんが、**ユーザーが画面の前で待っている処理には向きません**。
+
+ここは正直に言うと、**「うさぎにしていい処理か」を見極める話**です。裏で片付く仕事はうさぎ向き。目の前で応答を返す仕事は、ちいかわ的に常駐していてもらった方がいい場面もあります。全部うさぎにすればいいわけではありません。
+
+**④ 権限が足りない失敗は、静かに起きる**
+
+トリガーは作れたのにイベントが届かない、というのが一番つらいパターンでした。エラーが自分の画面には出ないんですよね。Eventarc の裏側で配達に失敗しているので、**Cloud Run のログを見ても何も出ません**。
+
+こういうときはトリガー側を見ます。
+
+```bash
+gcloud eventarc triggers describe usagi-trigger --location="${REGION}"
+```
+
+---
+
+## まとめ ― 今日のことば
+
+| ことば | 意味 | うさぎで言うと |
+| :--- | :--- | :--- |
+| **イベント駆動** | 何かが起きたことを合図に処理が始まる | 気配がしたら現れる |
+| **疎結合** | 呼ぶ側と呼ばれる側が互いを知らない | 誰に呼ばれたか知らない |
+| **ステートレス** | 前回の状態を持ち越さない | 何も引きずらない |
+| **ゼロスケール** | 暇なときは0インスタンス | 普段いない |
+| **冪等性** | 何回やっても結果が同じ | 2回しばいても大丈夫 |
+| **デッドレタートピック** | 何度やっても失敗した分の置き場 | 討伐できなかった分の山 |
+| **指数バックオフ** | 再試行の間隔を徐々に広げる | 一回離れて様子を見る |
+
+---
+
+## おわりに
+
+密結合なシステムは、どこか1箇所が泣き崩れると全体が連鎖して倒れます。そして残念ながら、システムというのはだいたい、**一番弱いところの強さしか持てません**。
+
+だからこそ、イベントを合図に勝手に立ち上がって、圧倒的な速さで片付けて、リソースを綺麗に片付けて去っていく——そういう部品を1つずつ増やしていくのが、地道ですが確実な道なんだと思います。
+
+……ただ、これを書いていて思ったのですが、**うさぎがすごいのは、たぶん強いからではない**んですよね。
+
+うさぎは、うまくいかなくても引きずりません。失敗しても、次のときにはもう「ヤハァ!!」と言っています。**エラーを内部状態にしない**。これって、システムとして一番真似したい性質で、そして一番難しい性質でもあります。
+
+次にアーキテクチャ図を描くときは、自分の描いた四角に問いかけてみてください。
+
+**「この子は、ちゃんと『ヤハァ!!』と言って自律稼働できているだろうか？」**
+
+……とはいえ、私は今日も自分で書いたリトライ設定に泣かされて、ちいかわ側の顔をしています。うさぎになるのは、なかなか難しい。
+
+*(※本記事は**非公式のファンコンテンツ**です。『ちいかわ』に関する権利は権利者に帰属し、当サイトは権利者・関係各社とは一切関係ありません。作品はぜひ[公式X](https://x.com/ngnchiikawa)や単行本でお楽しみください。)*
