@@ -445,7 +445,11 @@ gcloud storage buckets create "${BUCKET}" --location="${REGION}"
 
 ```bash
 # ① Cloud Storage のサービスエージェントが Pub/Sub に発行できるようにする
-export GCS_SA="$(gcloud storage service-agent --project=${PROJECT_ID})"
+#    この GET には「まだ無ければ作る」効果があるので、先に呼んでおく
+export GCS_SA="$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://storage.googleapis.com/storage/v1/projects/${PROJECT_ID}/serviceAccount" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["email_address"])')"
+
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GCS_SA}" \
   --role="roles/pubsub.publisher"
@@ -461,6 +465,23 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${SA_EVENT}" \
   --role="roles/eventarc.eventReceiver"
 ```
+
+### 余談 ― 「まだ存在しない代理人」
+
+①で `curl` を使っているのには理由があります。素直に名前を組み立てて権限を付けようとすると、こう怒られます。
+
+```
+ERROR: (gcloud.projects.add-iam-policy-binding) INVALID_ARGUMENT:
+Service account service-＜プロジェクト番号＞@gs-project-accounts.iam.gserviceaccount.com does not exist.
+```
+
+**サービスエージェント**（Google のサービスが、あなたのプロジェクト内で作業するときに名乗る代理人アカウント）は、**必要になるまで作られません**。名前の形式は決まっているので「あるはずの住所」は計算できるのですが、**そこにまだ誰も住んでいない**わけです。
+
+上の `curl` が叩いている API は、**問い合わせると同時に、いなければ作る**という動きをします。だから「取得する」だけのつもりのコマンドが、実は開通作業を兼ねています。
+
+……これ、うさぎと同じですよね。**呼ばれるまでどこにもいない。** 呼び出しの権利だけが先に決まっていて、実体は必要になった瞬間に現れる。ゼロスケールの話をずっとしてきましたが、**Google Cloud 自身がその設計で作られている**のが垣間見えるところです。
+
+代理人が先に必要なら、こちらから一度呼んで、存在してもらってから権限を渡す。順番が1つ増えるだけの話ですが、知らないと「名前は合っているのに存在しないと言われる」で30分溶かします（溶かしました）。
 
 そしてトリガーを作ります。
 
