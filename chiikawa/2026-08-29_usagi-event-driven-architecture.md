@@ -124,6 +124,8 @@ export REGION="asia-northeast1"
 export BUCKET="gs://${PROJECT_ID}-kusa"     # 草の生える場所
 export SERVICE="usagi"                       # うさぎ本体
 
+export PROJECT_NUMBER="$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')"
+
 gcloud config set project "${PROJECT_ID}"
 
 # 必要な API をまとめて有効化
@@ -306,11 +308,68 @@ The lockfile at `uv.lock` needs to be updated, but `--locked` was provided.
 
 **② 依存とコードを別の層に分けています。** `COPY main.py` を後ろに置いているので、コードだけ直したときは依存のインストールが丸ごとスキップされます。コールドスタートの話をしておいて**ビルドが遅い**のは格好がつかないので、ここは効かせておきたいところです。
 
-デプロイします。
+### まずイメージの置き場を作る
+
+Cloud Run は「コンテナイメージ」を動かすサービスなので、**先にイメージを焼いて、置いておく場所**が要ります。その置き場が **Artifact Registry**（アーティファクトレジストリ：ビルドしたイメージを保管する Google Cloud の倉庫）です。
 
 ```bash
+gcloud artifacts repositories create usagi-repo \
+  --repository-format=docker \
+  --location="${REGION}" \
+  --description="うさぎの置き場"
+
+export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/usagi-repo/${SERVICE}"
+```
+
+### ビルドは Cloud Build に投げる
+
+手元で `docker build` してもいいのですが、今回は **Cloud Build**（クラウドビルド：Google Cloud 側でビルドを実行してくれるサービス）に投げます。
+
+```bash
+# 今のディレクトリを丸ごと送って、Dockerfile でビルドしてもらう
+gcloud builds submit --tag "${IMAGE}:$(git rev-parse --short HEAD)" .
+```
+
+`gcloud builds submit` は、**カレントディレクトリを圧縮して Google に送り、向こう側でビルドして、Artifact Registry に置くところまで**をやってくれます。Dockerfile があればそれが使われます。
+
+ここで権限エラー（`PERMISSION_DENIED`）が出たら、**ビルドを実行するサービスアカウントに倉庫への書き込み権限が無い**ケースを疑ってください。プロジェクトの作られた時期によって、ビルドに使われる既定のアカウントが違います。
+
+```bash
+# ビルド側に、倉庫へイメージを置く権限を渡す
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+```
+
+これ、地味にうさぎ的な仕組みです。**自分のマシンで殴らない。** ビルドは向こうで勝手に走って、成果物だけが倉庫に置かれる。ノート PC のファンが唸ることもないし、「私の Mac だと通るのに CI だと落ちる」も起きにくくなります（ビルドする場所が1つになるので）。
+
+送るファイルは `.gcloudignore` で絞れます。**ここは書いておいた方がいいです。**
+
+```
+# .gcloudignore
+.git/
+.venv/
+__pycache__/
+*.pyc
+```
+
+`.venv/` を外すのが特に大事で、これを書かないと**手元の仮想環境（数百MB）をまるごとアップロードします**。中身は Dockerfile 側で `uv sync` して作り直すので、完全に無駄な往復です。私は最初これで「なんでビルドの開始がこんなに遅いんだ」と首をかしげていました。
+
+### タグに `latest` を使わない
+
+`$(git rev-parse --short HEAD)` を使っているのは意図的です。**イメージのタグをコミットハッシュにしておくと、「今動いているうさぎが、どのソースから焼かれたのか」が一意に決まります**。
+
+`latest` は便利ですが、**同じ名前で中身が入れ替わる**ので、障害が起きたときに「そのとき動いていた `latest`」を後から取り出せません。せっかく `uv.lock` で依存を固定したのに、イメージの側が動く名前だと、再現性がそこで切れます。
+
+### デプロイする
+
+焼き上がったイメージを指定して、Cloud Run に載せます。
+
+```bash
+export TAG="$(git rev-parse --short HEAD)"
+
 gcloud run deploy "${SERVICE}" \
-  --source=. \
+  --image="${IMAGE}:${TAG}" \
   --region="${REGION}" \
   --service-account="${SA_USAGI}" \
   --no-allow-unauthenticated \
@@ -319,8 +378,6 @@ gcloud run deploy "${SERVICE}" \
   --concurrency=10 \
   --timeout=300
 ```
-
-`--source=.` は「このディレクトリを丸ごと渡すので、そっちでビルドして」という指定です。**Dockerfile があればそれが使われます**（無ければ Google 側が中身を見て勝手にビルドしてくれる Buildpacks という仕組みが動きます）。今回は uv で固めたいので Dockerfile を置いてあります。
 
 オプションが今日の主役なので、1つずつ見ます。
 
@@ -333,6 +390,10 @@ gcloud run deploy "${SERVICE}" \
 | `--timeout=300` | 5分で打ち切る | 長引く討伐は諦める |
 
 `--min-instances=0` が**ゼロスケール**です。ここを 1 にすると常時起動になり、応答は速くなりますが**待っているだけで課金されます**。「速さを買うか、コストを削るか」の設定がこの1行に入っています。
+
+**`--source=.` を使えば1コマンドで済むのでは？** と思った方、正しいです。`gcloud run deploy --source=.` は、上のビルドとデプロイをまとめてやってくれます。最初の1回はそれで十分です。
+
+ただ、**ビルドとデプロイを分けておくと後で効きます**。同じイメージを検証環境と本番に順番に流したいとき、`--source` 方式だと**環境ごとにビルドし直すことになり、「検証で確認したものと本番のものが同一である」保証がなくなります**。1回焼いたうさぎを、そのまま次の現場に送り込みたい。
 
 うさぎ側にも権限を渡しておきます。
 
@@ -441,7 +502,6 @@ gcloud pubsub subscriptions update "${SUB}" \
 そして DLQ を配送する側にも権限が要ります。ここも忘れがちです。
 
 ```bash
-export PROJECT_NUMBER="$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')"
 export PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
 
 gcloud pubsub topics add-iam-policy-binding usagi-dead-letter \
