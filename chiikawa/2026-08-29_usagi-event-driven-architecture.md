@@ -555,7 +555,10 @@ gcloud pubsub subscriptions update "${SUB}" \
 そして DLQ を配送する側にも権限が要ります。ここも忘れがちです。
 
 ```bash
+# ターミナルを開き直していると PROJECT_NUMBER が消えているので取り直す
+export PROJECT_NUMBER="$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')"
 export PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+echo "${PUBSUB_SA}"
 
 gcloud pubsub topics add-iam-policy-binding usagi-dead-letter \
   --member="serviceAccount:${PUBSUB_SA}" --role="roles/pubsub.publisher"
@@ -563,6 +566,8 @@ gcloud pubsub topics add-iam-policy-binding usagi-dead-letter \
 gcloud pubsub subscriptions add-iam-policy-binding "${SUB}" \
   --member="serviceAccount:${PUBSUB_SA}" --role="roles/pubsub.subscriber"
 ```
+
+`echo` を挟んでいるのは、**変数が空でも組み立てが成立してしまう**からです。`PROJECT_NUMBER` が空だと `service-@gcp-sa-pubsub...` という、形は整っているのに存在しない名前ができあがり、`does not exist` で怒られます。エラーの中身に「あるはずの数字が無い」ことは書いてくれないので、**使う直前に自分の目で見る**のが結局いちばん早いです。
 
 DLQ を作ったら、**必ず中身を見る運用もセットで作ってください**。積むだけ積んで誰も見ない DLQ は、ただのゴミ箱です。私は監視アラートを1本入れて、メッセージ数が0より大きくなったら通知するようにしています。
 
@@ -588,17 +593,7 @@ DLQ を作ったら、**必ず中身を見る運用もセットで作ってく�
 
 ここは正直に言うと、**「うさぎにしていい処理か」を見極める話**です。裏で片付く仕事はうさぎ向き。目の前で応答を返す仕事は、ちいかわ的に常駐していてもらった方がいい場面もあります。全部うさぎにすればいいわけではありません。
 
-**④ コマンド置換は、失敗しても黙って空文字を置く**
-
-最初、私はタグを `--tag "${IMAGE}:$(git rev-parse --short HEAD)"` と書いていました。git 管理下でないディレクトリで試したところ、置換結果が空文字になり、こうなりました。
-
-```
-invalid image name ".../usagi-repo/usagi:": could not parse reference
-```
-
-末尾がコロンで終わっているのが手がかりです。エラーは `gcloud` から返ってきますが、**原因はシェル側で起きた失敗**なので、`gcloud` のドキュメントをいくら読んでも書いてありません。`$(...)` は中で失敗しても止まらず、空のまま先に進みます。凝ったことをする前に、まず `echo` で中身を見る、が結局いちばん早いです。
-
-**⑤ 権限が足りない失敗は、静かに起きる**
+**④ 権限が足りない失敗は、静かに起きる**
 
 トリガーは作れたのにイベントが届かない、というのが一番つらいパターンでした。エラーが自分の画面には出ないんですよね。Eventarc の裏側で配達に失敗しているので、**Cloud Run のログを見ても何も出ません**。
 
