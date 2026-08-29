@@ -332,14 +332,39 @@ gcloud builds submit --tag "${IMAGE}:$(git rev-parse --short HEAD)" .
 
 `gcloud builds submit` は、**カレントディレクトリを圧縮して Google に送り、向こう側でビルドして、Artifact Registry に置くところまで**をやってくれます。Dockerfile があればそれが使われます。
 
-ここで権限エラー（`PERMISSION_DENIED`）が出たら、**ビルドを実行するサービスアカウントに倉庫への書き込み権限が無い**ケースを疑ってください。プロジェクトの作られた時期によって、ビルドに使われる既定のアカウントが違います。
+**そして、ここでたぶん1回転びます。** 私は転びました。
+
+```
+ERROR: (gcloud.builds.submit) INVALID_ARGUMENT: could not resolve source:
+googleapi: Error 403: ...-compute@developer.gserviceaccount.com does not have
+storage.objects.get access to the Google Cloud Storage object.
+Permission 'storage.objects.get' denied on resource
+'//storage.googleapis.com/projects/_/buckets/<PROJECT>_cloudbuild/objects/source/....tgz'
+```
+
+エラーの見た目に反して、**イメージを置く権限の話ではありません**。よく読むと `storage.objects.get` で、しかも対象が `<プロジェクト>_cloudbuild` というバケットです。
+
+さっき「カレントディレクトリを圧縮して Google に送る」と書きましたが、その圧縮ファイルは**いったん Cloud Storage に置かれます**。そしてビルドを実行するサービスアカウントが、**自分宛てに送られたその荷物を開けられていない**、というのがこのエラーの中身です。倉庫の鍵の話ではなく、**荷物の受け取りの話**でした。
+
+原因は、**ビルドを実行するアカウントが Compute Engine の既定サービスアカウント（`＜プロジェクト番号＞-compute@developer.gserviceaccount.com`）になっている**ことです。以前は Cloud Build 専用のアカウントが自動で必要な権限を持っていましたが、今は既定のアカウントが使われ、**権限は自分で渡す必要があります**。
+
+必要な権限をまとめて持っているロールがあるので、それを渡すのが早いです。
 
 ```bash
-# ビルド側に、倉庫へイメージを置く権限を渡す
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/artifactregistry.writer"
+  --role="roles/cloudbuild.builds.builder"
 ```
+
+このロールには、**送った荷物を読む権限・ビルドログを書く権限・Artifact Registry にイメージを置く権限**が含まれています。個別に渡すなら次の3つです（最小権限でいきたい場合はこちら）。
+
+| ロール | 何のために要るか |
+| :--- | :--- |
+| `roles/storage.objectViewer` | 送った圧縮ファイルを読む（**今回落ちたのはここ**） |
+| `roles/logging.logWriter` | ビルドログを書く |
+| `roles/artifactregistry.writer` | 焼いたイメージを倉庫に置く |
+
+この「エラーメッセージの主語が、自分の思っていた登場人物と違う」パターン、クラウドだと本当によくあります。今回も**倉庫（Artifact Registry）の話だと思って倉庫の権限を眺めていた**のですが、実際に怒っていたのは受付（Cloud Storage）でした。**まずエラーが名指ししているリソース名を読む。** 島編のときの「通信できない原因が電話帳にあった」と同じ構図ですね。
 
 これ、地味にうさぎ的な仕組みです。**自分のマシンで殴らない。** ビルドは向こうで勝手に走って、成果物だけが倉庫に置かれる。ノート PC のファンが唸ることもないし、「私の Mac だと通るのに CI だと落ちる」も起きにくくなります（ビルドする場所が1つになるので）。
 
