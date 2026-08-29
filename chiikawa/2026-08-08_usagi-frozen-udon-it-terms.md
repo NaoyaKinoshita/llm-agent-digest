@@ -1,4 +1,4 @@
-# 【ちいかわ】うさぎの「ほどよく解凍された冷たい巨大うどん」で学ぶIT用語入門
+# IT用語入門 ― 圧縮・キャッシュ・ボトルネックをちいかわのうさぎと冷凍うどんで学ぶ
 
 <!-- x-summary: うさぎが巨大な冷凍うどんで動脈を冷やしていた回は、圧縮・ボトルネック・抽象化・キャッシュ・冷却というIT用語がまるごと詰まった入門教材だった、という解説 -->
 <!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-08_usagi-frozen-udon/01-usagi-suzushige.png -->

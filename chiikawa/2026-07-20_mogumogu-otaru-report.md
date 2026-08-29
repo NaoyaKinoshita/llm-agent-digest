@@ -1,4 +1,4 @@
-# 【体験レポート】オープンしたての「ちいかわもぐもぐ本舗 小樽店」に行ってきた！限定グッズ・ステンドグラスの店内・入場予約のコツまとめ
+# ちいかわもぐもぐ本舗 小樽店 体験レポート ― 限定グッズ・入場予約のコツ・店内の様子
 
 <!-- x-summary: 北海道・小樽にオープンした「ちいかわもぐもぐ本舗 小樽店」に突撃！ステンドグラスの美しい店内や限定グッズ、入場予約のリアルを体験レポートにまとめました🐹 -->
 <!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-07-20_mogumogu-otaru/06-usagi.jpg -->

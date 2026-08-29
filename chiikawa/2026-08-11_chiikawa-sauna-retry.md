@@ -1,4 +1,4 @@
-# 【ちいかわ】水風呂で「冷たいのにあったかい」となる回は、IT のリトライ設計そのものだった（サウナ好きエンジニアの叫び）
+# リトライ設計と指数バックオフ入門 ― ちいかわのサウナ回「冷たいのにあったかい」で学ぶ
 
 <!-- x-summary: ちいかわとハチワレが水風呂に挑戦して「ととのう」回を、リトライ・タイムアウト・体感と実測の乖離といったIT設計の話として読み解く。最後にサウナをPythonのクラスで書きます -->
 <!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-08-11_chiikawa-sauna/01-gaikiyoku.png -->

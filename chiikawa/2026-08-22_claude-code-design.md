@@ -1,4 +1,4 @@
-# Claude Code に `/design` が来た — 「適当にサービス作って」で LP が3案出てきた
+# Claude Code の /design を試した ― 「適当にサービス作って」で LP が3案出てきた
 
 <!-- x-summary: Claude Code から使えるようになった /design を検証した記録。雑な指示から架空の B2B SaaS が生えてきた話と、生成される .dc.html / canvas.json の中身、触れるプロトタイプの仕組み、ローカルで開いても真っ白になる理由まで -->
 

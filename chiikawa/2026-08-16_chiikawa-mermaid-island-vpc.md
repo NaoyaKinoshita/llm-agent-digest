@@ -1,4 +1,4 @@
-# 【ちいかわ】人魚の島のひみつ、Google Cloud の VPC を組んでいたら急に他人事じゃなくなった
+# Google Cloud VPC / VPC Service Controls 入門 ― ちいかわ「人魚の島のひみつ」で学ぶ
 
 <!-- x-summary: ちいかわ島編（セイレーン編）の「人魚を食べてしまった島民」の話を、Google Cloud の IAM・VPC・ファイアウォール・VPC Service Controls になぞらえて、まったくの初心者向けに解説してみた記事 -->
 

@@ -1,4 +1,4 @@
-# 【ちいかわ】「ヤハァ!!」と現れて即スケール ― うさぎに学ぶ Google Cloud イベント駆動アーキテクチャ
+# Google Cloud イベント駆動アーキテクチャ入門 ― Pub/Sub × Eventarc × Cloud Run をちいかわのうさぎで学ぶ
 
 <!-- x-summary: どこからともなく現れて、草をむしって、フゥンと去っていくうさぎ。あの生態はイベント駆動アーキテクチャそのものだった、という話。Pub/Sub と Eventarc と Cloud Run で「うさぎ」を実際に組み立てる gcloud 手順つきです -->
 
