@@ -11,8 +11,13 @@ const SITE = "https://blog.kinolab.work";
  * X からの流入を GA4 で分離するための UTM。
  * t.co 経由の referral だけだと、どの投稿から来たのかまでは追えない
  */
-function withUtm(url, campaign) {
-  return `${url}?utm_source=x&utm_medium=social&utm_campaign=${campaign}`;
+function withUtm(url, defaultCampaign) {
+  const campaign =
+    process.env.UTM_CAMPAIGN ||
+    (process.env.MANUAL_PATH ? "repost" : defaultCampaign);
+  return `${url}?utm_source=x&utm_medium=social&utm_campaign=${encodeURIComponent(
+    campaign,
+  )}`;
 }
 
 const DAILY_RE = /^daily\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.md$/;
@@ -63,12 +68,14 @@ function toAnnouncement(path) {
   const explicitSummary = extractExplicitSummary(content);
 
   if (c) {
-    const id = c[4] ? `${c[1]}-${c[2]}-${c[3]}_${c[4]}` : `${c[1]}-${c[2]}-${c[3]}`;
+    const id = c[4]
+      ? `${c[1]}-${c[2]}-${c[3]}_${c[4]}`
+      : `${c[1]}-${c[2]}-${c[3]}`;
     return {
       header: "【不定期コラム更新】",
       title,
       teaser: explicitSummary ?? extractParagraphFallback(content),
-      url: `${SITE}/column/${id}/`,
+      url: withUtm(`${SITE}/column/${id}/`, "column"),
       hashtags: COLUMN_HASHTAGS,
     };
   }
@@ -79,7 +86,7 @@ function toAnnouncement(path) {
       label: `${year}/${Number(month)}/${Number(day)}`,
       title,
       teaser: explicitSummary ?? extractTeaserFallback(content),
-      url: withUtm(`${SITE}/daily/${d[1]}/`, "daily"),
+      url: withUtm(`${SITE}/daily/${d[1]}/`, "new_post"),
     };
   }
   if (w) {
@@ -89,7 +96,7 @@ function toAnnouncement(path) {
       teaser:
         explicitSummary ??
         "今週のLLM・AIエージェント関連の主要リリース・研究動向・セキュリティインシデントを、1本のレポートで振り返ります",
-      url: withUtm(`${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}/`, "weekly"),
+      url: withUtm(`${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}/`, "new_post"),
     };
   }
   return {
@@ -98,7 +105,7 @@ function toAnnouncement(path) {
     teaser:
       explicitSummary ??
       "今月のLLM・AIエージェント動向を総括。主要モデルのリリース・研究・セキュリティの動きをまとめて確認できます",
-    url: withUtm(`${SITE}/monthly/${m[1]}-${m[2]}/`, "monthly"),
+    url: withUtm(`${SITE}/monthly/${m[1]}-${m[2]}/`, "new_post"),
   };
 }
 
