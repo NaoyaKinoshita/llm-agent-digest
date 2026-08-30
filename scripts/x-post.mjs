@@ -116,7 +116,9 @@ async function run() {
     if (!meta) continue;
 
     const id = getArticleId(file);
-    const url = `${SITE_BASE_URL}/column/${id}`;
+    // 末尾スラッシュ付きが配信側の正規形（無しは 301 される）。
+    // UTM は GA4 でどの投稿からの流入かを分けるため
+    const url = `${SITE_BASE_URL}/column/${id}/?utm_source=x&utm_medium=social&utm_campaign=column`;
     const text = buildTweetText(meta.title, meta.excerpt, url);
 
     console.log("--- 投稿するテキスト ---");

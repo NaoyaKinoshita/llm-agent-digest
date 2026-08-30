@@ -7,6 +7,14 @@ import { TwitterApi } from "twitter-api-v2";
 // X がリダイレクト前の内容でカードをキャッシュすることがある
 const SITE = "https://blog.kinolab.work";
 
+/**
+ * X からの流入を GA4 で分離するための UTM。
+ * t.co 経由の referral だけだと、どの投稿から来たのかまでは追えない
+ */
+function withUtm(url, campaign) {
+  return `${url}?utm_source=x&utm_medium=social&utm_campaign=${campaign}`;
+}
+
 const DAILY_RE = /^daily\/\d{4}\/\d{2}\/(\d{4}-\d{2}-\d{2})\.md$/;
 const WEEKLY_RE = /^weekly\/\d{4}\/\d{2}\/(\d{4})-(\d{2})-(\d{2})\.md$/;
 const MONTHLY_RE = /^monthly\/\d{4}\/(\d{4})-(\d{2})\.md$/;
@@ -71,7 +79,7 @@ function toAnnouncement(path) {
       label: `${year}/${Number(month)}/${Number(day)}`,
       title,
       teaser: explicitSummary ?? extractTeaserFallback(content),
-      url: `${SITE}/daily/${d[1]}/`,
+      url: withUtm(`${SITE}/daily/${d[1]}/`, "daily"),
     };
   }
   if (w) {
@@ -81,7 +89,7 @@ function toAnnouncement(path) {
       teaser:
         explicitSummary ??
         "今週のLLM・AIエージェント関連の主要リリース・研究動向・セキュリティインシデントを、1本のレポートで振り返ります",
-      url: `${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}/`,
+      url: withUtm(`${SITE}/weekly/${w[1]}-${w[2]}-${w[3]}/`, "weekly"),
     };
   }
   return {
@@ -90,7 +98,7 @@ function toAnnouncement(path) {
     teaser:
       explicitSummary ??
       "今月のLLM・AIエージェント動向を総括。主要モデルのリリース・研究・セキュリティの動きをまとめて確認できます",
-    url: `${SITE}/monthly/${m[1]}-${m[2]}/`,
+    url: withUtm(`${SITE}/monthly/${m[1]}-${m[2]}/`, "monthly"),
   };
 }
 
