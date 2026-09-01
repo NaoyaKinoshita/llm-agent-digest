@@ -6,11 +6,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "daily/**"
       - "weekly/**"
       - "monthly/**"
-      # chiikawa/ は自動投稿しない（SSG 生成前に X がカードをキャッシュする事故が
-      # 起きたため）。コラムを告知したい場合は workflow_dispatch で手動実行する
+      # daily/ と chiikawa/ は自動投稿しない。告知したい場合は workflow_dispatch で
+      # 手動実行する（daily は weekly を告知の主軸にする方針のため、chiikawa は
+      # SSG 生成前に X がカードをキャッシュする事故が起きたため）
   workflow_dispatch:
     inputs:
       path:

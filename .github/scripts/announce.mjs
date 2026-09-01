@@ -29,6 +29,15 @@ const COLUMN_RE = /^chiikawa\/(?:.*\/)?(\d{4})-(\d{2})-(\d{2})(?:[-_](.+))?\.md$
 const DIGEST_HASHTAGS = "#LLM #AIエージェント";
 const COLUMN_HASHTAGS = "#ちいかわ #エンジニアと繋がりたい";
 
+// push では告知せず、workflow_dispatch の手動実行でのみ告知するカテゴリ。
+// ワークフローの on.push.paths からも外しているが、weekly と daily が同じ push に
+// 入ると差分経由で拾ってしまうため、ここでも落とす（chiikawa も同様）
+const MANUAL_ONLY_RES = [DAILY_RE, COLUMN_RE];
+
+function isManualOnly(path) {
+  return MANUAL_ONLY_RES.some((re) => re.test(path));
+}
+
 // 対象を「このpushで新規追加された md」に限定することで二重投稿を防ぐ。
 // 同一日付の改訂版（_v2 など）は正規表現に一致しないため投稿されない
 function detectNewArticles() {
@@ -47,7 +56,8 @@ function detectNewArticles() {
     encoding: "utf8",
   })
     .split("\n")
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((path) => !isManualOnly(path));
 }
 
 function toAnnouncement(path) {
