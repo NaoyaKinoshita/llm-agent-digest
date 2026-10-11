@@ -2,7 +2,7 @@
 
 <!-- x-summary: ちいかわの草むしり検定・なんとかバニア・黒い流れ星を入口に、AIエージェントをプロンプトではなくコードで守る話を書きました。500個の指示で最良のモデルでも正確さ68%という研究から、同じ一日を繰り返すエージェントを Python で止めるところまで -->
 
-<!-- og-image: https://blog.kinolab.work/ogp.png -->
+<!-- og-image: https://raw.githubusercontent.com/NaoyaKinoshita/llm-agent-digest/main/chiikawa/images/2026-10-11_chiikawa-agent-guardrails/01-nantokanare.png -->
 
 こんにちは。ちいかわが好きなエンジニアです。
 
