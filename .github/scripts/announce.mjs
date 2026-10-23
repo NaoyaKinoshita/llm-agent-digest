@@ -1,5 +1,5 @@
 // push で追加された新しいレポートを検出し、ブログ記事の告知を X に投稿する
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { TwitterApi } from "twitter-api-v2";
 
@@ -49,12 +49,14 @@ function detectNewArticles() {
     return [manualPath];
   }
   // 新規ブランチ作成などで before が全ゼロの場合は直近コミットのみ対象
-  const range = /^0+$/.test(before ?? "")
-    ? `${after}~1 ${after}`
-    : `${before} ${after}`;
-  return execSync(`git diff --name-only --diff-filter=A ${range}`, {
-    encoding: "utf8",
-  })
+  const rangeArgs = /^0+$/.test(before ?? "")
+    ? [`${after}~1`, after]
+    : [before, after];
+  return execFileSync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=A", ...rangeArgs],
+    { encoding: "utf8" },
+  )
     .split("\n")
     .filter(Boolean)
     .filter((path) => !isManualOnly(path));

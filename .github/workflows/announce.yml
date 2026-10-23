@@ -29,6 +29,8 @@ on:
 jobs:
   post:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,7 +38,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-save twitter-api-v2
+      - run: npm install --no-save twitter-api-v2@1.29.1
       - run: node .github/scripts/announce.mjs
         env:
           BEFORE_SHA: ${{ github.event.before }}
