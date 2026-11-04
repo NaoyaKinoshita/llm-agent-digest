@@ -1,16 +1,10 @@
-# 新しいレポートが push されたら、ブログ記事の告知を X に自動投稿する
+# ブログ記事の告知を X に投稿する（手動実行のみ）
 # 必要な Secrets: X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET
 name: announce
 
+# push による自動投稿は 2026-11-04 に停止した（サイトから広告を外したのに合わせて）。
+# 告知するときは Actions → announce → Run workflow から実行する
 on:
-  push:
-    branches: [main]
-    paths:
-      - "weekly/**"
-      - "monthly/**"
-      # daily/ と chiikawa/ は自動投稿しない。告知したい場合は workflow_dispatch で
-      # 手動実行する（daily は weekly を告知の主軸にする方針のため、chiikawa は
-      # SSG 生成前に X がカードをキャッシュする事故が起きたため）
   workflow_dispatch:
     inputs:
       path:
